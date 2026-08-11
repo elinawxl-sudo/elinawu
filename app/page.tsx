@@ -156,7 +156,7 @@ export default function Home() {
           <div className="male-rule"><span>维持逻辑</span><b>先缓慢回到 70kg 内，再按两周均重小幅调整</b><p>每周固定 3 次晨起称重；达到目标后若体重仍持续下降，每次增加 100–200 kcal，不因单日波动改变饮食。</p></div>
         </div>
         <button className="report-preview" onClick={()=>setReportOpen(true)} aria-label="查看男主人两页体测报告">
-          <img src="/body-tests/male-seca-2026-05-09-1.png" alt="男主人体测报告第一页预览"/>
+          <img src="/body-tests/male-seca-2026-05-09-1-public.png" alt="已脱敏的男主人体测报告第一页预览"/>
           <span><b>男主人体测图</b><small>共 2 页 · 点击查看</small></span>
         </button>
       </section>
@@ -197,7 +197,7 @@ export default function Home() {
       <section className="advice"><div className="advice-icon">☀</div><div><span>基于两人体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重，进入 70kg 内后转为维持。</li><li>男主人达到目标后若连续两周仍下降，逐次增加 100–200 kcal；若均重回到 70kg 以上，则先减少甜饮、酒精和额外油脂。</li><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡，并补足优质蛋白。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
     </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
-    {reportOpen&&<div className="report-modal" role="dialog" aria-modal="true" aria-label="男主人体测报告" onClick={()=>setReportOpen(false)}><section onClick={event=>event.stopPropagation()}><header><div><b>男主人体测报告</b><span>2026 年 5 月 9 日 · 共 2 页</span></div><button onClick={()=>setReportOpen(false)} aria-label="关闭体测报告">×</button></header><div className="report-pages"><img src="/body-tests/male-seca-2026-05-09-1.png" alt="男主人体测报告第一页"/><img src="/body-tests/male-seca-2026-05-09-2.png" alt="男主人体测报告第二页"/></div><p>体测资料仅用于家庭健康管理，请勿转发。</p></section></div>}
+    {reportOpen&&<div className="report-modal" role="dialog" aria-modal="true" aria-label="男主人体测报告" onClick={()=>setReportOpen(false)}><section onClick={event=>event.stopPropagation()}><header><div><b>男主人体测报告</b><span>2026 年 5 月 9 日 · 共 2 页</span></div><button onClick={()=>setReportOpen(false)} aria-label="关闭体测报告">×</button></header><div className="report-pages"><img src="/body-tests/male-seca-2026-05-09-1-public.png" alt="已脱敏的男主人体测报告第一页"/><img src="/body-tests/male-seca-2026-05-09-2-public.png" alt="已脱敏的男主人体测报告第二页"/></div><p>公开版本已隐藏姓名、联系方式及其他身份信息。</p></section></div>}
   </main>
 }
 
