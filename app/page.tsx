@@ -74,7 +74,7 @@ function canvasPdf(canvas:HTMLCanvasElement,filename:string){
   push("xref\n0 6\n0000000000 65535 f \n");
   for(let i=1;i<=5;i++)push(`${String(offsets[i]).padStart(10,"0")} 00000 n \n`);
   push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
-  const blob=new Blob(chunks,{type:"application/pdf"});
+  const blob=new Blob(chunks.map(part=>part.buffer.slice(part.byteOffset,part.byteOffset+part.byteLength) as ArrayBuffer),{type:"application/pdf"});
   const url=URL.createObjectURL(blob);
   const link=document.createElement("a");link.href=url;link.download=filename;link.click();
   window.setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -195,27 +195,33 @@ function FoodLibrary({foodTab,setFoodTab}:{foodTab:string;setFoodTab:(s:string)=
 }
 
 type Rating = "好吃"|"还行"|"祛除";
+const RATING_STORAGE_KEY="family-recipe-ratings-v1";
 
 function RecipeLibrary() {
   const [ratings,setRatings]=useState<Record<string,Rating>>({});
   const [filter,setFilter]=useState<"全部"|"未标记"|Rating>("全部");
   const [search,setSearch]=useState("");
   const [saving,setSaving]=useState("");
-  const [notice,setNotice]=useState("正在同步标记…");
-  useEffect(()=>{fetch("/api/recipe-ratings").then(r=>r.json()).then(data=>{
-    const next:Record<string,Rating>={};
-    for(const row of data.ratings||[]) next[row.dishId]=row.rating;
-    setRatings(next); setNotice("");
-  }).catch(()=>setNotice("暂时无法同步，刷新后重试"));},[]);
+  const [notice,setNotice]=useState("");
+  useEffect(()=>{
+    try{
+      const saved=window.localStorage.getItem(RATING_STORAGE_KEY);
+      if(saved)setRatings(JSON.parse(saved));
+    }catch{setNotice("本机标记暂时无法读取");}
+  },[]);
   const allDishes=recipeMeals.flatMap(m=>m.dishes.map((name,i)=>({id:`${m.id}-${i}`,name})));
   const calibratedMeals=recipeMeals.filter(m=>m.recipeNo).length;
   const counts={"全部":allDishes.length,"未标记":allDishes.filter(d=>!ratings[d.id]).length,"好吃":allDishes.filter(d=>ratings[d.id]==="好吃").length,"还行":allDishes.filter(d=>ratings[d.id]==="还行").length,"祛除":allDishes.filter(d=>ratings[d.id]==="祛除").length};
   const visible=recipeMeals.map(m=>({...m,dishes:m.dishes.map((name,i)=>({name,id:`${m.id}-${i}`})).filter(d=>(!search||d.name.includes(search))&&(filter==="全部"||(filter==="未标记"?!ratings[d.id]:ratings[d.id]===filter)))})).filter(m=>m.dishes.length);
-  const save=async(id:string,rating:Rating)=>{
-    const old=ratings[id]; setRatings(v=>({...v,[id]:rating})); setSaving(id); setNotice("");
-    try{const res=await fetch("/api/recipe-ratings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({dishId:id,rating})});if(!res.ok)throw new Error();}
-    catch{setRatings(v=>{const n={...v};if(old)n[id]=old;else delete n[id];return n});setNotice("这次没有保存成功，请再点一次");}
-    finally{setSaving("")}
+  const save=(id:string,rating:Rating)=>{
+    setSaving(id);setNotice("");
+    setRatings(current=>{
+      const next={...current,[id]:rating};
+      try{window.localStorage.setItem(RATING_STORAGE_KEY,JSON.stringify(next));}
+      catch{setNotice("标记已显示，但本机没有保存成功");}
+      return next;
+    });
+    setSaving("");
   };
   return <div className="page recipes-page">
     <section className="recipe-hero"><div><span className="eyebrow">FAMILY RECIPE ARCHIVE</span><h1>菜谱数据库</h1><p>已从 33 顿历史餐食中拆出 {allDishes.length} 道菜，其中 {calibratedMeals} 顿已用原菜谱逐项校准；其余保留为照片识别，方便继续复核与打标。</p></div><div className="mark-progress"><span>首轮打标进度</span><b>{allDishes.length-counts.未标记}<small> / {allDishes.length} 道</small></b><div><i style={{width:`${Math.round((allDishes.length-counts.未标记)/allDishes.length*100)}%`}}/></div></div></section>
@@ -231,6 +237,6 @@ function RecipeLibrary() {
       </div>
     </article>)}</div>
     {!visible.length&&<div className="empty-recipes"><b>没有找到对应菜品</b><span>换个筛选条件或搜索词试试</span></div>}
-    <p className="recipe-footnote">“菜谱校准”来自原菜谱与成品照交叉匹配；“照片识别”仍可能存在偏差。口味标记会保存在家庭数据库中，之后可继续修改。</p>
+    <p className="recipe-footnote">“菜谱校准”来自原菜谱与成品照交叉匹配；“照片识别”仍可能存在偏差。口味标记会保存在当前设备中，之后可继续修改。</p>
   </div>
 }
