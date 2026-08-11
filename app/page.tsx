@@ -208,6 +208,7 @@ function RecipeLibrary() {
     setRatings(next); setNotice("");
   }).catch(()=>setNotice("暂时无法同步，刷新后重试"));},[]);
   const allDishes=recipeMeals.flatMap(m=>m.dishes.map((name,i)=>({id:`${m.id}-${i}`,name})));
+  const calibratedMeals=recipeMeals.filter(m=>m.recipeNo).length;
   const counts={"全部":allDishes.length,"未标记":allDishes.filter(d=>!ratings[d.id]).length,"好吃":allDishes.filter(d=>ratings[d.id]==="好吃").length,"还行":allDishes.filter(d=>ratings[d.id]==="还行").length,"祛除":allDishes.filter(d=>ratings[d.id]==="祛除").length};
   const visible=recipeMeals.map(m=>({...m,dishes:m.dishes.map((name,i)=>({name,id:`${m.id}-${i}`})).filter(d=>(!search||d.name.includes(search))&&(filter==="全部"||(filter==="未标记"?!ratings[d.id]:ratings[d.id]===filter)))})).filter(m=>m.dishes.length);
   const save=async(id:string,rating:Rating)=>{
@@ -217,19 +218,19 @@ function RecipeLibrary() {
     finally{setSaving("")}
   };
   return <div className="page recipes-page">
-    <section className="recipe-hero"><div><span className="eyebrow">FAMILY RECIPE ARCHIVE</span><h1>菜谱数据库</h1><p>已从 33 顿历史餐食中拆出 {allDishes.length} 道菜。先凭口味打标，之后就能自动生成更合胃口的菜单。</p></div><div className="mark-progress"><span>首轮打标进度</span><b>{allDishes.length-counts.未标记}<small> / {allDishes.length} 道</small></b><div><i style={{width:`${Math.round((allDishes.length-counts.未标记)/allDishes.length*100)}%`}}/></div></div></section>
+    <section className="recipe-hero"><div><span className="eyebrow">FAMILY RECIPE ARCHIVE</span><h1>菜谱数据库</h1><p>已从 33 顿历史餐食中拆出 {allDishes.length} 道菜，其中 {calibratedMeals} 顿已用原菜谱逐项校准；其余保留为照片识别，方便继续复核与打标。</p></div><div className="mark-progress"><span>首轮打标进度</span><b>{allDishes.length-counts.未标记}<small> / {allDishes.length} 道</small></b><div><i style={{width:`${Math.round((allDishes.length-counts.未标记)/allDishes.length*100)}%`}}/></div></div></section>
     <section className="recipe-tools">
       <div className="rating-filters">{(["全部","未标记","好吃","还行","祛除"] as const).map(f=><button key={f} className={`${filter===f?"active":""} filter-${f}`} onClick={()=>setFilter(f)}>{f}<b>{counts[f]}</b></button>)}</div>
       <label className="recipe-search"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索菜名" aria-label="搜索菜名"/></label>
     </section>
     {notice&&<p className="sync-notice">{notice}</p>}
     <div className="recipe-grid">{visible.map((m,index)=><article className="recipe-card" key={m.id}>
-      <div className="meal-photo"><img src={m.image} alt={`历史餐食 ${index+1}`}/><span>{m.kind}</span><b>餐食 {String(recipeMeals.findIndex(x=>x.id===m.id)+1).padStart(2,"0")}</b></div>
-      <div className="recipe-list"><div className="recipe-card-title"><h2>本餐菜品</h2><span>{m.dishes.length} 道</span></div>
+      <div className={`meal-photo ${m.recipeNo?"calibrated":""}`}><img src={m.image} alt={`历史餐食 ${index+1}`}/><span>{m.recipeNo?`${m.recipeNo}号菜谱 · ${m.mealSlot}`:m.kind}</span><b>{m.recipeNo?"菜谱校准":`照片识别 · 餐食 ${String(recipeMeals.findIndex(x=>x.id===m.id)+1).padStart(2,"0")}`}</b></div>
+      <div className="recipe-list"><div className="recipe-card-title"><h2>{m.recipeNo?"菜谱校准菜品":"照片识别菜品"}</h2><span>{m.dishes.length} 道</span></div>
         {m.dishes.map(d=><div className="recipe-row" key={d.id}><div><span className="dish-check">{ratings[d.id]?"✓":""}</span><strong>{d.name}</strong></div><div className={`rating-buttons ${saving===d.id?"saving":""}`}>{(["好吃","还行","祛除"] as Rating[]).map(r=><button key={r} className={ratings[d.id]===r?`selected selected-${r}`:""} onClick={()=>save(d.id,r)} aria-pressed={ratings[d.id]===r}>{r}</button>)}</div></div>)}
       </div>
     </article>)}</div>
     {!visible.length&&<div className="empty-recipes"><b>没有找到对应菜品</b><span>换个筛选条件或搜索词试试</span></div>}
-    <p className="recipe-footnote">菜名由照片初步识别，可能存在偏差。口味标记会保存在家庭数据库中，之后可继续修改。</p>
+    <p className="recipe-footnote">“菜谱校准”来自原菜谱与成品照交叉匹配；“照片识别”仍可能存在偏差。口味标记会保存在家庭数据库中，之后可继续修改。</p>
   </div>
 }
