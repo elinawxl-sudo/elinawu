@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { recipeMeals } from "./recipe-data";
 
 type Meal = {
+  mealType: "早餐" | "午餐";
   name: string;
   portion: string;
   kcal: number;
@@ -13,14 +14,21 @@ type Meal = {
   omega: number;
   score: number;
   tags: string[];
+  image: string;
+  focus: string;
   warning?: string;
 };
 
 const meals: Meal[] = [
-  { name: "香煎三文鱼", portion: "约 180g", kcal: 374, carbs: 2, protein: 39, fiber: 0, omega: 3.7, score: 94, tags: ["高 Omega-3", "优质蛋白"] },
-  { name: "蒜蓉西兰花", portion: "约 220g", kcal: 132, carbs: 18, protein: 8, fiber: 7, omega: 0.3, score: 91, tags: ["高纤维", "十字花科"] },
-  { name: "藜麦南瓜饭", portion: "约 260g", kcal: 346, carbs: 63, protein: 11, fiber: 9, omega: 0.4, score: 86, tags: ["全谷物", "β-胡萝卜素"] },
-  { name: "糖醋里脊", portion: "约 150g", kcal: 428, carbs: 37, protein: 24, fiber: 1, omega: 0.1, score: 42, tags: ["高油", "添加糖"], warning: "油炸与糖醋汁会增加精制糖和饱和脂肪。建议改为烤里脊，酱汁减半。" },
+  { mealType:"早餐", name:"贝果配奶酪火腿黄桃", portion:"家庭份约 2 个贝果", kcal:820, carbs:108, protein:31, fiber:7, omega:0.2, score:61, tags:["主食", "乳制品"], image:"/current-meal/2026-08-11-breakfast.jpg", focus:"18% 20%", warning:"火腿与奶酪的钠和饱和脂肪偏高；建议火腿减半，部分换成鸡蛋或低盐鱼肉。" },
+  { mealType:"早餐", name:"鸡蛋时蔬沙拉", portion:"鸡蛋约 3 个 + 时蔬", kcal:385, carbs:24, protein:24, fiber:9, omega:0.4, score:88, tags:["优质蛋白", "高纤维"], image:"/current-meal/2026-08-11-breakfast.jpg", focus:"63% 40%" },
+  { mealType:"早餐", name:"果奶／酸奶饮", portion:"约 2 碗 400ml", kcal:310, carbs:42, protein:16, fiber:5, omega:0.6, score:84, tags:["钙", "益生菌"], image:"/current-meal/2026-08-11-breakfast.jpg", focus:"90% 30%" },
+  { mealType:"早餐", name:"坚果与黄桃", portion:"坚果约 30g + 水果", kcal:265, carbs:30, protein:7, fiber:6, omega:0.5, score:90, tags:["不饱和脂肪", "多酚"], image:"/current-meal/2026-08-11-breakfast.jpg", focus:"57% 72%" },
+  { mealType:"午餐", name:"清蒸鱼", portion:"整鱼可食部约 350g", kcal:560, carbs:7, protein:72, fiber:0, omega:1.7, score:92, tags:["优质蛋白", "Omega-3"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"46% 17%" },
+  { mealType:"午餐", name:"虫草花牛肉片", portion:"牛肉约 250g", kcal:620, carbs:18, protein:52, fiber:3, omega:0.1, score:73, tags:["高蛋白", "红肉"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"55% 76%", warning:"牛肉份量和炒油偏高；两人合计建议控制在 200g 左右，并少油少盐。" },
+  { mealType:"午餐", name:"木耳炒荷兰豆", portion:"约 320g", kcal:245, carbs:28, protein:8, fiber:9, omega:0.2, score:91, tags:["高纤维", "菌菇多糖"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"21% 66%" },
+  { mealType:"午餐", name:"清炒青菜", portion:"约 300g", kcal:185, carbs:14, protein:7, fiber:6, omega:0.2, score:93, tags:["深色蔬菜", "叶酸"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"78% 35%" },
+  { mealType:"午餐", name:"杂粮饭（照片补充）", portion:"熟重约 320g", kcal:390, carbs:82, protein:8, fiber:5, omega:0.1, score:80, tags:["全谷物", "复合碳水"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"88% 75%" },
 ];
 
 const foodData: Record<string, {name:string; note:string}[]> = {
@@ -86,15 +94,15 @@ function createDailyReportPdf(eaten:Record<string,number>){
   write(date,1170,82,18,muted,400,"right");write("今日饮食营养报告",70,190,49,ink,650);write("成品照 + 菜谱/用料截图交叉分析 · 按做菜总量的 80% 计入实际摄入",70,230,19,muted,400);
   ctx.fillStyle=green;ctx.fillRect(70,263,1100,4);
   write("01  菜品识别",70,315,22,green,650);
-  meals.forEach((meal,index)=>{const col=index%2,row=Math.floor(index/2);const x=70+col*560,y=342+row*190;card(x,y,540,166);write(meal.name,x+25,y+42,25,ink,650);write(meal.portion,x+515,y+41,15,muted,400,"right");write(String(meal.kcal),x+25,y+92,37,green,650);write("kcal",x+112,y+92,15,muted,400);write(`碳水 ${meal.carbs}g`,x+210,y+85,17,ink,500);write(`蛋白 ${meal.protein}g`,x+330,y+85,17,ink,500);write(`纤维 ${meal.fiber}g`,x+445,y+85,17,ink,500);write(meal.tags.join(" · "),x+25,y+135,15,muted,400);ctx.fillStyle=meal.score>80?"#e7f0e9":"#f7e8e3";ctx.beginPath();ctx.roundRect(x+427,y+18,88,28,14);ctx.fill();write(`${meal.score} 分`,x+471,y+38,14,meal.score>80?green:coral,650,"center")});
-  write("02  家庭实际摄入",70,755,22,green,650);card(70,782,1100,168);
+  meals.forEach((meal,index)=>{const col=index%3,row=Math.floor(index/3);const x=70+col*370,y=342+row*145;card(x,y,350,128);write(`${meal.mealType} · ${meal.name}`,x+18,y+32,17,ink,650);write(meal.portion,x+18,y+55,11,muted,400);write(String(meal.kcal),x+18,y+91,27,green,650);write("kcal",x+77,y+91,11,muted,400);write(`碳 ${meal.carbs}g`,x+132,y+85,12,ink,500);write(`蛋 ${meal.protein}g`,x+204,y+85,12,ink,500);write(`纤 ${meal.fiber}g`,x+276,y+85,12,ink,500);ctx.fillStyle=meal.score>80?"#e7f0e9":"#f7e8e3";ctx.beginPath();ctx.roundRect(x+270,y+14,62,22,11);ctx.fill();write(`${meal.score}分`,x+301,y+30,11,meal.score>80?green:coral,650,"center")});
+  write("02  早餐 + 午餐家庭实际摄入",70,795,22,green,650);card(70,820,1100,145);
   const metrics:[[string,number,string],[string,number,string],[string,number,string],[string,number,string],[string,number,string]]=[["热量",eaten.kcal,"kcal"],["碳水",eaten.carbs,"g"],["蛋白质",eaten.protein,"g"],["纤维素",eaten.fiber,"g"],["Omega-3",eaten.omega,"g"]];
-  metrics.forEach(([name,value,unit],index)=>{const x=70+index*220;write(name,x+110,830,16,muted,400,"center");write(String(value),x+110,885,32,index===0?green:ink,650,"center");write(unit,x+110,918,14,muted,400,"center");if(index<4){ctx.fillStyle=line;ctx.fillRect(x+219,812,2,110)}});
+  metrics.forEach(([name,value,unit],index)=>{const x=70+index*220;write(name,x+110,858,15,muted,400,"center");write(String(value),x+110,906,30,index===0?green:ink,650,"center");write(unit,x+110,936,13,muted,400,"center");if(index<4){ctx.fillStyle=line;ctx.fillRect(x+219,842,2,98)}});
   write("03  男女主人分餐",70,1000,22,green,650);
   const people=[{name:"男主人",ratio:"60%",kcal:Math.round(eaten.kcal*.6),target:1800,color:blue,factor:.6,note:"目标体重 <70kg"},{name:"女主人",ratio:"40%",kcal:Math.round(eaten.kcal*.4),target:1450,color:coral,factor:.4,note:"60 天减脂计划"}];
   people.forEach((person,index)=>{const x=70+index*560,y=1028;card(x,y,540,195);ctx.fillStyle=person.color;ctx.beginPath();ctx.arc(x+48,y+47,24,0,Math.PI*2);ctx.fill();write(person.name[0],x+48,y+56,20,white,650,"center");write(person.name,x+86,y+43,22,ink,650);write(`分餐 ${person.ratio} · ${person.note}`,x+86,y+70,14,muted,400);write(`${person.kcal} / ${person.target} kcal`,x+515,y+48,18,ink,650,"right");ctx.fillStyle="#e9eeeb";ctx.beginPath();ctx.roundRect(x+25,y+96,490,9,5);ctx.fill();ctx.fillStyle=green;ctx.beginPath();ctx.roundRect(x+25,y+96,Math.min(490,490*person.kcal/person.target),9,5);ctx.fill();write(`碳水 ${Math.round(eaten.carbs*person.factor)}g`,x+25,y+151,15,muted,500);write(`蛋白 ${Math.round(eaten.protein*person.factor)}g`,x+145,y+151,15,muted,500);write(`纤维 ${(eaten.fiber*person.factor).toFixed(1)}g`,x+270,y+151,15,muted,500);write(`Omega-3 ${(eaten.omega*person.factor).toFixed(1)}g`,x+390,y+151,15,muted,500)});
   write("04  今日反馈建议",70,1280,22,green,650);card(70,1308,1100,340);
-  const advice=["男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重。","男主人进入 70kg 内后转为维持；若连续两周仍下降，每次增加 100–200 kcal。","女主人以 1,450 kcal 为当前预算，晚餐建议 450–550 kcal，并补足优质蛋白。","糖醋里脊建议减半，改用清蒸或烤制；主食熟重约 100g，并补一大份深色蔬菜。"];
+  const advice=[`男主人早餐午餐分餐约 ${Math.round(eaten.kcal*.6)} kcal，已接近 1,800 kcal 预算，晚餐宜清淡。`,`女主人早餐午餐分餐约 ${Math.round(eaten.kcal*.4)} kcal，晚餐可安排约 ${Math.max(0,1450-Math.round(eaten.kcal*.4))} kcal。`,"清蒸鱼、木耳荷兰豆、青菜和坚果提供较好的 Omega-3、纤维与多酚。","火腿奶酪与牛肉的钠、红肉和饱和脂肪偏高；下次火腿减半，牛肉两人合计约 200g。"];
   advice.forEach((text,index)=>{const y=1360+index*70;ctx.fillStyle=index===3?coral:green;ctx.beginPath();ctx.arc(100,y-7,7,0,Math.PI*2);ctx.fill();ctx.font=`400 18px ${font}`;ctx.fillStyle=ink;ctx.textAlign="left";wrapped(text,125,y,990,29,2)});
   ctx.fillStyle=line;ctx.fillRect(70,1690,1100,2);write("营养结果基于图片与常见烹饪方式估算，仅用于家庭日常饮食管理。",70,1723,13,muted,400);write("ONE PAGE · PRIVATE FAMILY REPORT",1170,1723,12,muted,500,"right");
   const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
@@ -104,26 +112,12 @@ function createDailyReportPdf(eaten:Record<string,number>){
 export default function Home() {
   const [tab, setTab] = useState<"today"|"foods"|"recipes">("today");
   const [foodTab, setFoodTab] = useState("肉类·蛋白");
-  const [uploaded, setUploaded] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [preview, setPreview] = useState("");
-  const [recipePreview, setRecipePreview] = useState("");
-  const [analysisNotice, setAnalysisNotice] = useState("");
+  const [uploadCount, setUploadCount] = useState(0);
   const [exporting, setExporting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const recipeInput = useRef<HTMLInputElement>(null);
   const totals = useMemo(()=>meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,carbs:a.carbs+m.carbs,protein:a.protein+m.protein,fiber:a.fiber+m.fiber,omega:a.omega+m.omega}),{kcal:0,carbs:0,protein:0,fiber:0,omega:0}),[]);
   const eaten = Object.fromEntries(Object.entries(totals).map(([k,v])=>[k, +(v*0.8).toFixed(1)]));
-  const uploadSource = (kind:"dish"|"recipe",file?:File) => {
-    if (!file) return;
-    const url=URL.createObjectURL(file);
-    const dish=kind==="dish"?url:preview;
-    const recipe=kind==="recipe"?url:recipePreview;
-    if(kind==="dish")setPreview(url);else setRecipePreview(url);
-    setUploaded(false);
-    setAnalyzing(false);
-    setAnalysisNotice(dish&&recipe?"两张图片已接收。自动营养分析服务尚未连接，当前下方仍为示例数据。":"");
-  };
+  const selectMealFiles = (files?:FileList|null) => setUploadCount(files?.length||0);
   const downloadReport=()=>{setExporting(true);window.requestAnimationFrame(()=>{try{createDailyReportPdf(eaten)}finally{setExporting(false)}})};
 
   return <main>
@@ -139,7 +133,10 @@ export default function Home() {
 
     {tab==="today" ? <div className="page">
       <section className="welcome">
-        <div><span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>上传成品照和菜谱/用料截图，两份信息一起分析更准确。</p></div>
+        <div className="welcome-main">
+          <div className="compact-upload"><input ref={input} type="file" accept="image/*" multiple hidden onChange={e=>selectMealFiles(e.target.files)}/><button onClick={()=>input.current?.click()}>＋ 上传菜谱与成品图</button><span>{uploadCount?`已选择 ${uploadCount} 张图片`:`可一次多选菜谱和餐食照片`}</span></div>
+          <span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>11 号菜谱已与早餐、午餐照片对应分析。</p>
+        </div>
         <div className="goal-mini"><span>今日家庭目标</span><b>3,250 <small>kcal</small></b><em>女主人 1,450 · 男主人 1,800</em></div>
       </section>
 
@@ -157,30 +154,11 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="upload-card">
-        <div className="upload-copy"><span className="step">1</span><div><h2>上传成品照 + 菜谱</h2><p>成品照估算分量，菜谱截图校准食材、油盐与调料</p></div></div>
-        <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={e=>uploadSource("dish",e.target.files?.[0])}/>
-        <input ref={recipeInput} type="file" accept="image/*" hidden onChange={e=>uploadSource("recipe",e.target.files?.[0])}/>
-        <div className="upload-pair">
-          <button className={`upload-source ${preview?"ready":""}`} onClick={()=>input.current?.click()}>
-            {preview?<img src={preview} alt="待分析的成品菜照片"/>:<div><span>01</span><strong>拍成品菜照片</strong><small>建议从菜品正上方拍摄</small></div>}
-            {preview&&<b>成品菜照片 · 点击更换</b>}
-          </button>
-          <button className={`upload-source ${recipePreview?"ready":""}`} onClick={()=>recipeInput.current?.click()}>
-            {recipePreview?<img src={recipePreview} alt="待分析的菜谱或用料截图"/>:<div><span>02</span><strong>上传菜谱/用料截图</strong><small>菜谱、备料照或包装标签均可</small></div>}
-            {recipePreview&&<b>菜谱/用料 · 点击更换</b>}
-          </button>
-        </div>
-        <div className="source-status"><span className={preview?"ready":""}>{preview?"✓":"○"} 成品照</span><i>＋</i><span className={recipePreview?"ready":""}>{recipePreview?"✓":"○"} 菜谱截图</span><b>{preview&&recipePreview?"两张图已上传":"请上传齐两张图"}</b></div>
-        {analyzing && <div className="analyzing"><i/><span>正在汇总成品照与菜谱，校准食材和实际分量…</span></div>}
-        {analysisNotice&&<p className="analysis-notice">{analysisNotice}</p>}
-      </section>
-
-      <section className="analysis-head"><div><span className="step">2</span><div><h2>营养分析</h2><p>{uploaded?"成品照 + 菜谱截图已交叉识别 · 请按实际用量校正":"示例数据 · 待连接视觉营养分析服务"}</p></div></div><span className="score">抗炎评分 <b>82</b><small>/100</small></span></section>
+      <section className="analysis-head"><div><span className="step">1</span><div><h2>11 号菜谱营养分析</h2><p>菜谱文字与两张成品照交叉核对 · 共识别早餐 4 项、午餐 5 项</p></div></div><span className="score">抗炎评分 <b>84</b><small>/100</small></span></section>
 
       <div className="meal-grid">
-        {meals.map((m,i)=><article className="meal" key={m.name}>
-          <div className={`dish dish-${i}`}><span>{["🐟","🥦","🎃","🍖"][i]}</span><b className={m.score>80?"good":"caution"}>{m.score>80?"推荐":"需注意"}</b></div>
+        {meals.map(m=><article className="meal" key={m.name}>
+          <div className="dish dish-photo"><img src={m.image} alt={`${m.mealType}餐食照片` } style={{objectPosition:m.focus}}/><em>{m.mealType}</em><b className={m.score>80?"good":"caution"}>{m.score>80?"推荐":"需注意"}</b></div>
           <div className="meal-body"><div className="meal-title"><div><h3>{m.name}</h3><span>{m.portion}</span></div><button aria-label={`编辑${m.name}`}>✎</button></div>
           <div className="macros"><b>{m.kcal}<small>千卡</small></b><span>碳水 <strong>{m.carbs}g</strong></span><span>蛋白 <strong>{m.protein}g</strong></span><span>纤维 <strong>{m.fiber}g</strong></span></div>
           <div className="tags">{m.tags.map(t=><span key={t}>✦ {t}</span>)}</div>{m.warning&&<p className="warning">! {m.warning}</p>}</div>
@@ -188,7 +166,7 @@ export default function Home() {
       </div>
 
       <section className="summary-card">
-        <div className="summary-top"><div><span className="step">3</span><div><h2>家庭实际摄入</h2><p>按做菜总量的 80% 计入 · 剩余约 20%</p></div></div><b>{eaten.kcal}<small> kcal</small></b></div>
+        <div className="summary-top"><div><span className="step">2</span><div><h2>早餐 + 午餐家庭实际摄入</h2><p>按做菜总量的 80% 计入 · 剩余约 20%</p></div></div><b>{eaten.kcal}<small> kcal</small></b></div>
         <div className="metric-row">
           {[['热量',eaten.kcal,'kcal'],['碳水',eaten.carbs,'g'],['蛋白质',eaten.protein,'g'],['纤维素',eaten.fiber,'g'],['Omega-3',eaten.omega,'g']].map(([n,v,u])=><div key={n}><span>{n}</span><b>{v}<small>{u}</small></b></div>)}
         </div>
@@ -198,7 +176,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="advice"><div className="advice-icon">☀</div><div><span>基于两人体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重，进入 70kg 内后转为维持。</li><li>男主人达到目标后若连续两周仍下降，逐次增加 100–200 kcal；若均重回到 70kg 以上，则先减少甜饮、酒精和额外油脂。</li><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡，并补足优质蛋白。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li></ul></div></section>
+      <section className="advice"><div className="advice-icon">☀</div><div><span>基于菜谱、照片与两人体测的今日建议</span><h2>鱼、蔬菜和坚果表现很好，晚餐宜清淡收口</h2><ul><li>本次早餐与午餐合计实际摄入估算约 {eaten.kcal} 千卡；男主人分餐约 {Math.round(Number(eaten.kcal)*.6)} 千卡，已接近 1,800 千卡预算，晚餐如饿可选无油蔬菜汤或少量低脂蛋白。</li><li>女主人分餐约 {Math.round(Number(eaten.kcal)*.4)} 千卡，距离 1,450 千卡约余 {Math.max(0,1450-Math.round(Number(eaten.kcal)*.4))} 千卡；晚餐以蔬菜和少量豆腐、虾仁为主。</li><li>清蒸鱼、木耳荷兰豆、青菜和坚果提供较好的 Omega-3、纤维与多酚，是今天抗炎得分的主要来源。</li><li>贝果配火腿奶酪与虫草花牛肉的钠、红肉和饱和脂肪相对偏高；下次火腿减半、牛肉两人合计控制在约 200g。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
     </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
   </main>
