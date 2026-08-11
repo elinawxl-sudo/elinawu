@@ -50,6 +50,7 @@ export default function Home() {
   const [uploaded, setUploaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const totals = useMemo(()=>meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,carbs:a.carbs+m.carbs,protein:a.protein+m.protein,fiber:a.fiber+m.fiber,omega:a.omega+m.omega}),{kcal:0,carbs:0,protein:0,fiber:0,omega:0}),[]);
   const eaten = Object.fromEntries(Object.entries(totals).map(([k,v])=>[k, +(v*0.8).toFixed(1)]));
@@ -58,6 +59,13 @@ export default function Home() {
     setPreview(URL.createObjectURL(file)); setAnalyzing(true); setUploaded(false);
     window.setTimeout(()=>{setAnalyzing(false);setUploaded(true)}, 1500);
   };
+  useEffect(()=>{
+    if(!reportOpen)return;
+    const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setReportOpen(false)};
+    document.addEventListener("keydown",close);
+    document.body.style.overflow="hidden";
+    return()=>{document.removeEventListener("keydown",close);document.body.style.overflow=""};
+  },[reportOpen]);
 
   return <main>
     <header className="topbar">
@@ -80,6 +88,18 @@ export default function Home() {
         <div className="plan-title"><div className="avatar coral">女</div><div><span>女主人 · 60 天减脂计划</span><h2>56.45 → 51.45 kg</h2><p>目标体脂 ≤ 25% · 预计 9 月 19 日达成</p></div></div>
         <div className="plan-progress"><div><span>第 22 天 / 60 天</span><b>还需减 5.0 kg</b></div><div className="goalbar"><i style={{width:"37%"}}/></div><small>建议每周下降 0.5–0.7 kg，优先保住肌肉</small></div>
         <div className="body-stats"><div><span>当前体脂</span><b>29.8<small>%</small></b></div><div><span>每日建议</span><b>1,450<small>kcal</small></b></div><div><span>蛋白目标</span><b>90<small>g+</small></b></div><div><span>静息消耗</span><b>1,318<small>kcal</small></b></div></div>
+      </section>
+
+      <section className="male-plan">
+        <div className="male-plan-main">
+          <div className="plan-title"><div className="avatar blue">男</div><div><span>男主人 · 70kg 以下维持计划</span><h2>71.75 → &lt; 70 kg</h2><p>体测基线 2026.05.09 · BMI 23.7</p></div></div>
+          <div className="male-stats"><div><span>基线体脂</span><b>18.2<small>%</small></b></div><div><span>骨骼肌</span><b>27.79<small>kg</small></b></div><div><span>每日预算</span><b>1,800<small>kcal 起</small></b></div><div><span>静息消耗</span><b>1,676<small>kcal</small></b></div></div>
+          <div className="male-rule"><span>维持逻辑</span><b>先缓慢回到 70kg 内，再按两周均重小幅调整</b><p>每周固定 3 次晨起称重；达到目标后若体重仍持续下降，每次增加 100–200 kcal，不因单日波动改变饮食。</p></div>
+        </div>
+        <button className="report-preview" onClick={()=>setReportOpen(true)} aria-label="查看男主人两页体测报告">
+          <img src="/body-tests/male-seca-2026-05-09-1.png" alt="男主人体测报告第一页预览"/>
+          <span><b>男主人体测图</b><small>共 2 页 · 点击查看</small></span>
+        </button>
       </section>
 
       <section className="upload-card">
@@ -115,9 +135,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="advice"><div className="advice-icon">☀</div><div><span>基于体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡。</li><li>今天女主人蛋白约 26g，距离 90g 目标较远：晚餐加 150g 鱼/虾/鸡肉或 200g 豆腐。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li><li>连续两周每周下降超过 0.8kg、明显乏力或经期异常时，应提高摄入并咨询医生或营养师。</li></ul></div></section>
+      <section className="advice"><div className="advice-icon">☀</div><div><span>基于两人体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重，进入 70kg 内后转为维持。</li><li>男主人达到目标后若连续两周仍下降，逐次增加 100–200 kcal；若均重回到 70kg 以上，则先减少甜饮、酒精和额外油脂。</li><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡，并补足优质蛋白。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
     </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
+    {reportOpen&&<div className="report-modal" role="dialog" aria-modal="true" aria-label="男主人体测报告" onClick={()=>setReportOpen(false)}><section onClick={event=>event.stopPropagation()}><header><div><b>男主人体测报告</b><span>2026 年 5 月 9 日 · 共 2 页</span></div><button onClick={()=>setReportOpen(false)} aria-label="关闭体测报告">×</button></header><div className="report-pages"><img src="/body-tests/male-seca-2026-05-09-1.png" alt="男主人体测报告第一页"/><img src="/body-tests/male-seca-2026-05-09-2.png" alt="男主人体测报告第二页"/></div><p>体测资料仅用于家庭健康管理，请勿转发。</p></section></div>}
   </main>
 }
 
