@@ -108,7 +108,7 @@ export default function Home() {
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState("");
   const [recipePreview, setRecipePreview] = useState("");
-  const [reportOpen, setReportOpen] = useState(false);
+  const [analysisNotice, setAnalysisNotice] = useState("");
   const [exporting, setExporting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const recipeInput = useRef<HTMLInputElement>(null);
@@ -121,15 +121,9 @@ export default function Home() {
     const recipe=kind==="recipe"?url:recipePreview;
     if(kind==="dish")setPreview(url);else setRecipePreview(url);
     setUploaded(false);
-    if(dish&&recipe){setAnalyzing(true);window.setTimeout(()=>{setAnalyzing(false);setUploaded(true)},1500)}
+    setAnalyzing(false);
+    setAnalysisNotice(dish&&recipe?"两张图片已接收。自动营养分析服务尚未连接，当前下方仍为示例数据。":"");
   };
-  useEffect(()=>{
-    if(!reportOpen)return;
-    const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setReportOpen(false)};
-    document.addEventListener("keydown",close);
-    document.body.style.overflow="hidden";
-    return()=>{document.removeEventListener("keydown",close);document.body.style.overflow=""};
-  },[reportOpen]);
   const downloadReport=()=>{setExporting(true);window.requestAnimationFrame(()=>{try{createDailyReportPdf(eaten)}finally{setExporting(false)}})};
 
   return <main>
@@ -161,10 +155,6 @@ export default function Home() {
           <div className="male-stats"><div><span>基线体脂</span><b>18.2<small>%</small></b></div><div><span>骨骼肌</span><b>27.79<small>kg</small></b></div><div><span>每日预算</span><b>1,800<small>kcal 起</small></b></div><div><span>静息消耗</span><b>1,676<small>kcal</small></b></div></div>
           <div className="male-rule"><span>维持逻辑</span><b>先缓慢回到 70kg 内，再按两周均重小幅调整</b><p>每周固定 3 次晨起称重；达到目标后若体重仍持续下降，每次增加 100–200 kcal，不因单日波动改变饮食。</p></div>
         </div>
-        <button className="report-preview" onClick={()=>setReportOpen(true)} aria-label="查看男主人两页体测报告">
-          <img src="/body-tests/male-seca-2026-05-09-1-public.png" alt="已脱敏的男主人体测报告第一页预览"/>
-          <span><b>男主人体测图</b><small>共 2 页 · 点击查看</small></span>
-        </button>
       </section>
 
       <section className="upload-card">
@@ -181,11 +171,12 @@ export default function Home() {
             {recipePreview&&<b>菜谱/用料 · 点击更换</b>}
           </button>
         </div>
-        <div className="source-status"><span className={preview?"ready":""}>{preview?"✓":"○"} 成品照</span><i>＋</i><span className={recipePreview?"ready":""}>{recipePreview?"✓":"○"} 菜谱截图</span><b>{preview&&recipePreview?"已齐全，将交叉识别":"上传齐两张图后开始分析"}</b></div>
+        <div className="source-status"><span className={preview?"ready":""}>{preview?"✓":"○"} 成品照</span><i>＋</i><span className={recipePreview?"ready":""}>{recipePreview?"✓":"○"} 菜谱截图</span><b>{preview&&recipePreview?"两张图已上传":"请上传齐两张图"}</b></div>
         {analyzing && <div className="analyzing"><i/><span>正在汇总成品照与菜谱，校准食材和实际分量…</span></div>}
+        {analysisNotice&&<p className="analysis-notice">{analysisNotice}</p>}
       </section>
 
-      <section className="analysis-head"><div><span className="step">2</span><div><h2>营养分析</h2><p>{uploaded?"成品照 + 菜谱截图已交叉识别 · 请按实际用量校正":"示例数据 · 上传两张图后自动校准"}</p></div></div><span className="score">抗炎评分 <b>82</b><small>/100</small></span></section>
+      <section className="analysis-head"><div><span className="step">2</span><div><h2>营养分析</h2><p>{uploaded?"成品照 + 菜谱截图已交叉识别 · 请按实际用量校正":"示例数据 · 待连接视觉营养分析服务"}</p></div></div><span className="score">抗炎评分 <b>82</b><small>/100</small></span></section>
 
       <div className="meal-grid">
         {meals.map((m,i)=><article className="meal" key={m.name}>
@@ -210,7 +201,6 @@ export default function Home() {
       <section className="advice"><div className="advice-icon">☀</div><div><span>基于两人体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重，进入 70kg 内后转为维持。</li><li>男主人达到目标后若连续两周仍下降，逐次增加 100–200 kcal；若均重回到 70kg 以上，则先减少甜饮、酒精和额外油脂。</li><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡，并补足优质蛋白。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
     </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
-    {reportOpen&&<div className="report-modal" role="dialog" aria-modal="true" aria-label="男主人体测报告" onClick={()=>setReportOpen(false)}><section onClick={event=>event.stopPropagation()}><header><div><b>男主人体测报告</b><span>2026 年 5 月 9 日 · 共 2 页</span></div><button onClick={()=>setReportOpen(false)} aria-label="关闭体测报告">×</button></header><div className="report-pages"><img src="/body-tests/male-seca-2026-05-09-1-public.png" alt="已脱敏的男主人体测报告第一页"/><img src="/body-tests/male-seca-2026-05-09-2-public.png" alt="已脱敏的男主人体测报告第二页"/></div><p>公开版本已隐藏姓名、联系方式及其他身份信息。</p></section></div>}
   </main>
 }
 
