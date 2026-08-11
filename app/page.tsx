@@ -71,7 +71,13 @@ export default function Home() {
     {tab==="today" ? <div className="page">
       <section className="welcome">
         <div><span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>拍下做好的菜，营养和建议交给我们。</p></div>
-        <div className="goal-mini"><span>今日家庭目标</span><b>2,800 <small>kcal</small></b><em>女主人 1,000 · 男主人 1,800</em></div>
+        <div className="goal-mini"><span>今日家庭目标</span><b>3,250 <small>kcal</small></b><em>女主人 1,450 · 男主人 1,800</em></div>
+      </section>
+
+      <section className="body-plan">
+        <div className="plan-title"><div className="avatar coral">女</div><div><span>女主人 · 60 天减脂计划</span><h2>56.45 → 51.45 kg</h2><p>目标体脂 ≤ 25% · 预计 9 月 19 日达成</p></div></div>
+        <div className="plan-progress"><div><span>第 22 天 / 60 天</span><b>还需减 5.0 kg</b></div><div className="goalbar"><i style={{width:"37%"}}/></div><small>建议每周下降 0.5–0.7 kg，优先保住肌肉</small></div>
+        <div className="body-stats"><div><span>当前体脂</span><b>29.8<small>%</small></b></div><div><span>每日建议</span><b>1,450<small>kcal</small></b></div><div><span>蛋白目标</span><b>90<small>g+</small></b></div><div><span>静息消耗</span><b>1,318<small>kcal</small></b></div></div>
       </section>
 
       <section className="upload-card">
@@ -103,11 +109,11 @@ export default function Home() {
         </div>
         <div className="people">
           <Person name="男主人" icon="男" color="blue" ratio="60%" kcal={Math.round(Number(eaten.kcal)*.6)} target={1800} eaten={eaten}/>
-          <Person name="女主人" icon="女" color="coral" ratio="40%" kcal={Math.round(Number(eaten.kcal)*.4)} target={1000} eaten={eaten}/>
+          <Person name="女主人" icon="女" color="coral" ratio="40%" kcal={Math.round(Number(eaten.kcal)*.4)} target={1450} eaten={eaten}/>
         </div>
       </section>
 
-      <section className="advice"><div className="advice-icon">☀</div><div><span>今日营养师建议</span><h2>整体搭配不错，再做两个小调整</h2><ul><li>晚餐用清蒸鱼或豆腐替代糖醋里脊，减少约 180 千卡和添加糖。</li><li>女主人今日还可摄入约 590 千卡，晚餐主食减半，多加一份深色蔬菜。</li><li>Omega-3 表现优秀；明天可换成沙丁鱼或核桃，丰富食材来源。</li></ul></div></section>
+      <section className="advice"><div className="advice-icon">☀</div><div><span>基于体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡。</li><li>今天女主人蛋白约 26g，距离 90g 目标较远：晚餐加 150g 鱼/虾/鸡肉或 200g 豆腐。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li><li>连续两周每周下降超过 0.8kg、明显乏力或经期异常时，应提高摄入并咨询医生或营养师。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
     </div> : <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/>} 
   </main>
