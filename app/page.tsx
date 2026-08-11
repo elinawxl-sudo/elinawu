@@ -61,7 +61,7 @@ export default function Home() {
 
   return <main>
     <header className="topbar">
-      <button className="brand" onClick={()=>setTab("today")}><span className="brandmark">食</span><span><b>家味健康</b><small>家庭饮食管理</small></span></button>
+      <button className="brand" onClick={()=>setTab("today")}><span><b>朱医生 <em>&amp;</em> 巫豆豆</b><small>家庭饮食健康管理</small></span></button>
       <nav aria-label="主导航">
         <button className={tab==="today"?"active":""} onClick={()=>setTab("today")}><Icon>⌂</Icon>今日饮食</button>
         <button className={tab==="foods"?"active":""} onClick={()=>setTab("foods")}><Icon>♧</Icon>健康食材库</button>
