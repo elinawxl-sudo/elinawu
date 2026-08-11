@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { recipeMeals } from "./recipe-data";
 
 type Meal = {
   name: string;
@@ -44,7 +45,7 @@ const foodData: Record<string, {name:string; note:string}[]> = {
 function Icon({children}:{children:string}) { return <span className="icon" aria-hidden="true">{children}</span>; }
 
 export default function Home() {
-  const [tab, setTab] = useState<"today"|"foods">("today");
+  const [tab, setTab] = useState<"today"|"foods"|"recipes">("today");
   const [foodTab, setFoodTab] = useState("肉类·蛋白");
   const [uploaded, setUploaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -64,6 +65,7 @@ export default function Home() {
       <nav aria-label="主导航">
         <button className={tab==="today"?"active":""} onClick={()=>setTab("today")}><Icon>⌂</Icon>今日饮食</button>
         <button className={tab==="foods"?"active":""} onClick={()=>setTab("foods")}><Icon>♧</Icon>健康食材库</button>
+        <button className={tab==="recipes"?"active":""} onClick={()=>setTab("recipes")}><Icon>▦</Icon>菜谱数据库</button>
       </nav>
       <div className="date">8月11日 · 星期二</div>
     </header>
@@ -115,7 +117,7 @@ export default function Home() {
 
       <section className="advice"><div className="advice-icon">☀</div><div><span>基于体测的今日建议</span><h2>午餐搭配不错，晚餐重点补蛋白、控油糖</h2><ul><li>女主人当前分餐约 410 千卡，全天还可安排约 1,040 千卡；晚餐建议 450–550 千卡。</li><li>今天女主人蛋白约 26g，距离 90g 目标较远：晚餐加 150g 鱼/虾/鸡肉或 200g 豆腐。</li><li>糖醋里脊建议只吃半份，改用清蒸或烤制；主食控制在熟重 100g，并补一大份深色蔬菜。</li><li>连续两周每周下降超过 0.8kg、明显乏力或经期异常时，应提高摄入并咨询医生或营养师。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
-    </div> : <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/>} 
+    </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
   </main>
 }
 
@@ -129,4 +131,44 @@ function FoodLibrary({foodTab,setFoodTab}:{foodTab:string;setFoodTab:(s:string)=
  return <div className="page library"><section className="library-hero"><span className="eyebrow">ANTI-INFLAMMATORY PANTRY</span><h1>健康食材库</h1><p>遵循地中海饮食与抗炎原则，好吃、好买、好搭配。</p><div className="principles"><span>✓ 优质脂肪</span><span>✓ 丰富多酚</span><span>✓ 高纤低加工</span><span>✓ 多样天然色彩</span></div></section>
  <section className="food-panel"><div className="food-tabs">{Object.keys(foodData).map(k=><button className={foodTab===k?"active":""} onClick={()=>setFoodTab(k)} key={k}>{k}</button>)}</div><div className="top-title"><div><span>TOP</span><b>10</b></div><h2>{foodTab}推荐清单<small>按抗炎价值、营养密度与家常易做程度综合排序</small></h2></div><div className="food-grid">{foodData[foodTab].map((f,i)=><article key={f.name}><span className={i<3?"rank top":"rank"}>{String(i+1).padStart(2,'0')}</span><div className={`food-dot dot-${i%5}`}>{["✦","●","◆","✿","▲"][i%5]}</div><div><h3>{f.name}</h3><p>{f.note}</p></div><button aria-label={`收藏${f.name}`}>＋</button></article>)}</div></section>
  <section className="tip"><span>本周采购小建议</span><h2>每类选 3–5 种，颜色尽量不重复</h2><p>深绿色蔬菜 + 红紫色水果 + 深海鱼 + 橄榄油，是最容易坚持的抗炎组合。调料用姜黄配黑胡椒，更利于姜黄素吸收。</p></section></div>
+}
+
+type Rating = "好吃"|"还行"|"祛除";
+
+function RecipeLibrary() {
+  const [ratings,setRatings]=useState<Record<string,Rating>>({});
+  const [filter,setFilter]=useState<"全部"|"未标记"|Rating>("全部");
+  const [search,setSearch]=useState("");
+  const [saving,setSaving]=useState("");
+  const [notice,setNotice]=useState("正在同步标记…");
+  useEffect(()=>{fetch("/api/recipe-ratings").then(r=>r.json()).then(data=>{
+    const next:Record<string,Rating>={};
+    for(const row of data.ratings||[]) next[row.dishId]=row.rating;
+    setRatings(next); setNotice("");
+  }).catch(()=>setNotice("暂时无法同步，刷新后重试"));},[]);
+  const allDishes=recipeMeals.flatMap(m=>m.dishes.map((name,i)=>({id:`${m.id}-${i}`,name})));
+  const counts={"全部":allDishes.length,"未标记":allDishes.filter(d=>!ratings[d.id]).length,"好吃":allDishes.filter(d=>ratings[d.id]==="好吃").length,"还行":allDishes.filter(d=>ratings[d.id]==="还行").length,"祛除":allDishes.filter(d=>ratings[d.id]==="祛除").length};
+  const visible=recipeMeals.map(m=>({...m,dishes:m.dishes.map((name,i)=>({name,id:`${m.id}-${i}`})).filter(d=>(!search||d.name.includes(search))&&(filter==="全部"||(filter==="未标记"?!ratings[d.id]:ratings[d.id]===filter)))})).filter(m=>m.dishes.length);
+  const save=async(id:string,rating:Rating)=>{
+    const old=ratings[id]; setRatings(v=>({...v,[id]:rating})); setSaving(id); setNotice("");
+    try{const res=await fetch("/api/recipe-ratings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({dishId:id,rating})});if(!res.ok)throw new Error();}
+    catch{setRatings(v=>{const n={...v};if(old)n[id]=old;else delete n[id];return n});setNotice("这次没有保存成功，请再点一次");}
+    finally{setSaving("")}
+  };
+  return <div className="page recipes-page">
+    <section className="recipe-hero"><div><span className="eyebrow">FAMILY RECIPE ARCHIVE</span><h1>菜谱数据库</h1><p>已从 33 顿历史餐食中拆出 {allDishes.length} 道菜。先凭口味打标，之后就能自动生成更合胃口的菜单。</p></div><div className="mark-progress"><span>首轮打标进度</span><b>{allDishes.length-counts.未标记}<small> / {allDishes.length} 道</small></b><div><i style={{width:`${Math.round((allDishes.length-counts.未标记)/allDishes.length*100)}%`}}/></div></div></section>
+    <section className="recipe-tools">
+      <div className="rating-filters">{(["全部","未标记","好吃","还行","祛除"] as const).map(f=><button key={f} className={`${filter===f?"active":""} filter-${f}`} onClick={()=>setFilter(f)}>{f}<b>{counts[f]}</b></button>)}</div>
+      <label className="recipe-search"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索菜名" aria-label="搜索菜名"/></label>
+    </section>
+    {notice&&<p className="sync-notice">{notice}</p>}
+    <div className="recipe-grid">{visible.map((m,index)=><article className="recipe-card" key={m.id}>
+      <div className="meal-photo"><img src={m.image} alt={`历史餐食 ${index+1}`}/><span>{m.kind}</span><b>餐食 {String(recipeMeals.findIndex(x=>x.id===m.id)+1).padStart(2,"0")}</b></div>
+      <div className="recipe-list"><div className="recipe-card-title"><h2>本餐菜品</h2><span>{m.dishes.length} 道</span></div>
+        {m.dishes.map(d=><div className="recipe-row" key={d.id}><div><span className="dish-check">{ratings[d.id]?"✓":""}</span><strong>{d.name}</strong></div><div className={`rating-buttons ${saving===d.id?"saving":""}`}>{(["好吃","还行","祛除"] as Rating[]).map(r=><button key={r} className={ratings[d.id]===r?`selected selected-${r}`:""} onClick={()=>save(d.id,r)} aria-pressed={ratings[d.id]===r}>{r}</button>)}</div></div>)}
+      </div>
+    </article>)}</div>
+    {!visible.length&&<div className="empty-recipes"><b>没有找到对应菜品</b><span>换个筛选条件或搜索词试试</span></div>}
+    <p className="recipe-footnote">菜名由照片初步识别，可能存在偏差。口味标记会保存在家庭数据库中，之后可继续修改。</p>
+  </div>
 }
