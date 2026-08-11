@@ -83,7 +83,7 @@ function createDailyReportPdf(eaten:Record<string,number>){
   ctx.fillStyle=paper;ctx.fillRect(0,0,canvas.width,canvas.height);
   write("朱医生 & 巫豆豆",70,82,27,green,650);write("家庭饮食健康管理",70,118,18,muted,400);
   const now=new Date();const date=new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"short"}).format(now);
-  write(date,1170,82,18,muted,400,"right");write("今日饮食营养报告",70,190,49,ink,650);write("按做菜总量的 80% 计入实际摄入 · 图片分析为日常估算",70,230,19,muted,400);
+  write(date,1170,82,18,muted,400,"right");write("今日饮食营养报告",70,190,49,ink,650);write("成品照 + 菜谱/用料截图交叉分析 · 按做菜总量的 80% 计入实际摄入",70,230,19,muted,400);
   ctx.fillStyle=green;ctx.fillRect(70,263,1100,4);
   write("01  菜品识别",70,315,22,green,650);
   meals.forEach((meal,index)=>{const col=index%2,row=Math.floor(index/2);const x=70+col*560,y=342+row*190;card(x,y,540,166);write(meal.name,x+25,y+42,25,ink,650);write(meal.portion,x+515,y+41,15,muted,400,"right");write(String(meal.kcal),x+25,y+92,37,green,650);write("kcal",x+112,y+92,15,muted,400);write(`碳水 ${meal.carbs}g`,x+210,y+85,17,ink,500);write(`蛋白 ${meal.protein}g`,x+330,y+85,17,ink,500);write(`纤维 ${meal.fiber}g`,x+445,y+85,17,ink,500);write(meal.tags.join(" · "),x+25,y+135,15,muted,400);ctx.fillStyle=meal.score>80?"#e7f0e9":"#f7e8e3";ctx.beginPath();ctx.roundRect(x+427,y+18,88,28,14);ctx.fill();write(`${meal.score} 分`,x+471,y+38,14,meal.score>80?green:coral,650,"center")});
@@ -107,15 +107,21 @@ export default function Home() {
   const [uploaded, setUploaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState("");
+  const [recipePreview, setRecipePreview] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const recipeInput = useRef<HTMLInputElement>(null);
   const totals = useMemo(()=>meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,carbs:a.carbs+m.carbs,protein:a.protein+m.protein,fiber:a.fiber+m.fiber,omega:a.omega+m.omega}),{kcal:0,carbs:0,protein:0,fiber:0,omega:0}),[]);
   const eaten = Object.fromEntries(Object.entries(totals).map(([k,v])=>[k, +(v*0.8).toFixed(1)]));
-  const analyze = (file?:File) => {
+  const uploadSource = (kind:"dish"|"recipe",file?:File) => {
     if (!file) return;
-    setPreview(URL.createObjectURL(file)); setAnalyzing(true); setUploaded(false);
-    window.setTimeout(()=>{setAnalyzing(false);setUploaded(true)}, 1500);
+    const url=URL.createObjectURL(file);
+    const dish=kind==="dish"?url:preview;
+    const recipe=kind==="recipe"?url:recipePreview;
+    if(kind==="dish")setPreview(url);else setRecipePreview(url);
+    setUploaded(false);
+    if(dish&&recipe){setAnalyzing(true);window.setTimeout(()=>{setAnalyzing(false);setUploaded(true)},1500)}
   };
   useEffect(()=>{
     if(!reportOpen)return;
@@ -139,7 +145,7 @@ export default function Home() {
 
     {tab==="today" ? <div className="page">
       <section className="welcome">
-        <div><span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>拍下做好的菜，营养和建议交给我们。</p></div>
+        <div><span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>上传成品照和菜谱/用料截图，两份信息一起分析更准确。</p></div>
         <div className="goal-mini"><span>今日家庭目标</span><b>3,250 <small>kcal</small></b><em>女主人 1,450 · 男主人 1,800</em></div>
       </section>
 
@@ -162,17 +168,24 @@ export default function Home() {
       </section>
 
       <section className="upload-card">
-        <div className="upload-copy"><span className="step">1</span><div><h2>上传今天的菜</h2><p>一张照片可以同时识别多道菜</p></div></div>
-        <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={e=>analyze(e.target.files?.[0])}/>
-        <button className="upload-zone" onClick={()=>input.current?.click()}>
-          {preview ? <img src={preview} alt="待分析的菜品"/> : <div className="camera"><Icon>◉</Icon></div>}
-          <div><strong>{preview?"重新拍一张":"拍照或选择照片"}</strong><span>支持 JPG、PNG，建议从菜品正上方拍摄</span></div>
-          <b>选择照片</b>
-        </button>
-        {analyzing && <div className="analyzing"><i/><span>正在识别菜品与估算分量…</span></div>}
+        <div className="upload-copy"><span className="step">1</span><div><h2>上传成品照 + 菜谱</h2><p>成品照估算分量，菜谱截图校准食材、油盐与调料</p></div></div>
+        <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={e=>uploadSource("dish",e.target.files?.[0])}/>
+        <input ref={recipeInput} type="file" accept="image/*" hidden onChange={e=>uploadSource("recipe",e.target.files?.[0])}/>
+        <div className="upload-pair">
+          <button className={`upload-source ${preview?"ready":""}`} onClick={()=>input.current?.click()}>
+            {preview?<img src={preview} alt="待分析的成品菜照片"/>:<div><span>01</span><strong>拍成品菜照片</strong><small>建议从菜品正上方拍摄</small></div>}
+            {preview&&<b>成品菜照片 · 点击更换</b>}
+          </button>
+          <button className={`upload-source ${recipePreview?"ready":""}`} onClick={()=>recipeInput.current?.click()}>
+            {recipePreview?<img src={recipePreview} alt="待分析的菜谱或用料截图"/>:<div><span>02</span><strong>上传菜谱/用料截图</strong><small>菜谱、备料照或包装标签均可</small></div>}
+            {recipePreview&&<b>菜谱/用料 · 点击更换</b>}
+          </button>
+        </div>
+        <div className="source-status"><span className={preview?"ready":""}>{preview?"✓":"○"} 成品照</span><i>＋</i><span className={recipePreview?"ready":""}>{recipePreview?"✓":"○"} 菜谱截图</span><b>{preview&&recipePreview?"已齐全，将交叉识别":"上传齐两张图后开始分析"}</b></div>
+        {analyzing && <div className="analyzing"><i/><span>正在汇总成品照与菜谱，校准食材和实际分量…</span></div>}
       </section>
 
-      <section className="analysis-head"><div><span className="step">2</span><div><h2>营养分析</h2><p>{uploaded?"已识别 4 道菜 · AI 估算，请按实际用料校正":"今日午餐示例 · 4 道菜"}</p></div></div><span className="score">抗炎评分 <b>82</b><small>/100</small></span></section>
+      <section className="analysis-head"><div><span className="step">2</span><div><h2>营养分析</h2><p>{uploaded?"成品照 + 菜谱截图已交叉识别 · 请按实际用量校正":"示例数据 · 上传两张图后自动校准"}</p></div></div><span className="score">抗炎评分 <b>82</b><small>/100</small></span></section>
 
       <div className="meal-grid">
         {meals.map((m,i)=><article className="meal" key={m.name}>
