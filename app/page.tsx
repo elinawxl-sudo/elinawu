@@ -44,6 +44,63 @@ const foodData: Record<string, {name:string; note:string}[]> = {
 
 function Icon({children}:{children:string}) { return <span className="icon" aria-hidden="true">{children}</span>; }
 
+function canvasPdf(canvas:HTMLCanvasElement,filename:string){
+  const encoded=canvas.toDataURL("image/jpeg",.94).split(",")[1];
+  const binary=atob(encoded);
+  const image=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)image[i]=binary.charCodeAt(i);
+  const encoder=new TextEncoder();
+  const chunks:Uint8Array[]=[];
+  const offsets:number[]=[];
+  let cursor=0;
+  const push=(value:string|Uint8Array)=>{const part=typeof value==="string"?encoder.encode(value):value;chunks.push(part);cursor+=part.length};
+  const object=(id:number,write:()=>void)=>{offsets[id]=cursor;push(`${id} 0 obj\n`);write();push("\nendobj\n")};
+  push("%PDF-1.4\n");
+  object(1,()=>push("<< /Type /Catalog /Pages 2 0 R >>"));
+  object(2,()=>push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"));
+  object(3,()=>push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"));
+  object(4,()=>{push(`<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.length} >>\nstream\n`);push(image);push("\nendstream")});
+  const content="q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
+  object(5,()=>push(`<< /Length ${content.length} >>\nstream\n${content}endstream`));
+  const xref=cursor;
+  push("xref\n0 6\n0000000000 65535 f \n");
+  for(let i=1;i<=5;i++)push(`${String(offsets[i]).padStart(10,"0")} 00000 n \n`);
+  push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  const blob=new Blob(chunks,{type:"application/pdf"});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement("a");link.href=url;link.download=filename;link.click();
+  window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function createDailyReportPdf(eaten:Record<string,number>){
+  const canvas=document.createElement("canvas");canvas.width=1240;canvas.height=1754;
+  const ctx=canvas.getContext("2d");if(!ctx)return;
+  const ink="#202521",muted="#747c77",green="#315c49",line="#e2e6e3",paper="#f7f8f6",white="#ffffff",coral="#b97764",blue="#607d88";
+  const font='"PingFang SC","Microsoft YaHei",sans-serif';
+  const card=(x:number,y:number,w:number,h:number,fill=white)=>{ctx.beginPath();ctx.roundRect(x,y,w,h,18);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=line;ctx.lineWidth=2;ctx.stroke()};
+  const write=(text:string,x:number,y:number,size:number,color=ink,weight=400,align:CanvasTextAlign="left")=>{ctx.font=`${weight} ${size}px ${font}`;ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(text,x,y)};
+  const wrapped=(text:string,x:number,y:number,maxWidth:number,lineHeight:number,maxLines=3)=>{let lineText="",lines=0;for(const char of text){const next=lineText+char;if(ctx.measureText(next).width>maxWidth&&lineText){ctx.fillText(lineText,x,y+lines*lineHeight);lineText=char;lines++;if(lines===maxLines-1)break}else lineText=next}if(lineText&&lines<maxLines)ctx.fillText(lineText,x,y+lines*lineHeight);return lines+1};
+  ctx.fillStyle=paper;ctx.fillRect(0,0,canvas.width,canvas.height);
+  write("朱医生 & 巫豆豆",70,82,27,green,650);write("家庭饮食健康管理",70,118,18,muted,400);
+  const now=new Date();const date=new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"short"}).format(now);
+  write(date,1170,82,18,muted,400,"right");write("今日饮食营养报告",70,190,49,ink,650);write("按做菜总量的 80% 计入实际摄入 · 图片分析为日常估算",70,230,19,muted,400);
+  ctx.fillStyle=green;ctx.fillRect(70,263,1100,4);
+  write("01  菜品识别",70,315,22,green,650);
+  meals.forEach((meal,index)=>{const col=index%2,row=Math.floor(index/2);const x=70+col*560,y=342+row*190;card(x,y,540,166);write(meal.name,x+25,y+42,25,ink,650);write(meal.portion,x+515,y+41,15,muted,400,"right");write(String(meal.kcal),x+25,y+92,37,green,650);write("kcal",x+112,y+92,15,muted,400);write(`碳水 ${meal.carbs}g`,x+210,y+85,17,ink,500);write(`蛋白 ${meal.protein}g`,x+330,y+85,17,ink,500);write(`纤维 ${meal.fiber}g`,x+445,y+85,17,ink,500);write(meal.tags.join(" · "),x+25,y+135,15,muted,400);ctx.fillStyle=meal.score>80?"#e7f0e9":"#f7e8e3";ctx.beginPath();ctx.roundRect(x+427,y+18,88,28,14);ctx.fill();write(`${meal.score} 分`,x+471,y+38,14,meal.score>80?green:coral,650,"center")});
+  write("02  家庭实际摄入",70,755,22,green,650);card(70,782,1100,168);
+  const metrics:[[string,number,string],[string,number,string],[string,number,string],[string,number,string],[string,number,string]]=[["热量",eaten.kcal,"kcal"],["碳水",eaten.carbs,"g"],["蛋白质",eaten.protein,"g"],["纤维素",eaten.fiber,"g"],["Omega-3",eaten.omega,"g"]];
+  metrics.forEach(([name,value,unit],index)=>{const x=70+index*220;write(name,x+110,830,16,muted,400,"center");write(String(value),x+110,885,32,index===0?green:ink,650,"center");write(unit,x+110,918,14,muted,400,"center");if(index<4){ctx.fillStyle=line;ctx.fillRect(x+219,812,2,110)}});
+  write("03  男女主人分餐",70,1000,22,green,650);
+  const people=[{name:"男主人",ratio:"60%",kcal:Math.round(eaten.kcal*.6),target:1800,color:blue,factor:.6,note:"目标体重 <70kg"},{name:"女主人",ratio:"40%",kcal:Math.round(eaten.kcal*.4),target:1450,color:coral,factor:.4,note:"60 天减脂计划"}];
+  people.forEach((person,index)=>{const x=70+index*560,y=1028;card(x,y,540,195);ctx.fillStyle=person.color;ctx.beginPath();ctx.arc(x+48,y+47,24,0,Math.PI*2);ctx.fill();write(person.name[0],x+48,y+56,20,white,650,"center");write(person.name,x+86,y+43,22,ink,650);write(`分餐 ${person.ratio} · ${person.note}`,x+86,y+70,14,muted,400);write(`${person.kcal} / ${person.target} kcal`,x+515,y+48,18,ink,650,"right");ctx.fillStyle="#e9eeeb";ctx.beginPath();ctx.roundRect(x+25,y+96,490,9,5);ctx.fill();ctx.fillStyle=green;ctx.beginPath();ctx.roundRect(x+25,y+96,Math.min(490,490*person.kcal/person.target),9,5);ctx.fill();write(`碳水 ${Math.round(eaten.carbs*person.factor)}g`,x+25,y+151,15,muted,500);write(`蛋白 ${Math.round(eaten.protein*person.factor)}g`,x+145,y+151,15,muted,500);write(`纤维 ${(eaten.fiber*person.factor).toFixed(1)}g`,x+270,y+151,15,muted,500);write(`Omega-3 ${(eaten.omega*person.factor).toFixed(1)}g`,x+390,y+151,15,muted,500)});
+  write("04  今日反馈建议",70,1280,22,green,650);card(70,1308,1100,340);
+  const advice=["男主人先按 1,800 kcal/天作为起始预算，优先保证鱼、虾、鸡肉、蛋或豆制品；每周看 7 日均重。","男主人进入 70kg 内后转为维持；若连续两周仍下降，每次增加 100–200 kcal。","女主人以 1,450 kcal 为当前预算，晚餐建议 450–550 kcal，并补足优质蛋白。","糖醋里脊建议减半，改用清蒸或烤制；主食熟重约 100g，并补一大份深色蔬菜。"];
+  advice.forEach((text,index)=>{const y=1360+index*70;ctx.fillStyle=index===3?coral:green;ctx.beginPath();ctx.arc(100,y-7,7,0,Math.PI*2);ctx.fill();ctx.font=`400 18px ${font}`;ctx.fillStyle=ink;ctx.textAlign="left";wrapped(text,125,y,990,29,2)});
+  ctx.fillStyle=line;ctx.fillRect(70,1690,1100,2);write("营养结果基于图片与常见烹饪方式估算，仅用于家庭日常饮食管理。",70,1723,13,muted,400);write("ONE PAGE · PRIVATE FAMILY REPORT",1170,1723,12,muted,500,"right");
+  const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  canvasPdf(canvas,`朱医生巫豆豆-今日饮食报告-${stamp}.pdf`);
+}
+
 export default function Home() {
   const [tab, setTab] = useState<"today"|"foods"|"recipes">("today");
   const [foodTab, setFoodTab] = useState("肉类·蛋白");
@@ -51,6 +108,7 @@ export default function Home() {
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const totals = useMemo(()=>meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,carbs:a.carbs+m.carbs,protein:a.protein+m.protein,fiber:a.fiber+m.fiber,omega:a.omega+m.omega}),{kcal:0,carbs:0,protein:0,fiber:0,omega:0}),[]);
   const eaten = Object.fromEntries(Object.entries(totals).map(([k,v])=>[k, +(v*0.8).toFixed(1)]));
@@ -66,6 +124,7 @@ export default function Home() {
     document.body.style.overflow="hidden";
     return()=>{document.removeEventListener("keydown",close);document.body.style.overflow=""};
   },[reportOpen]);
+  const downloadReport=()=>{setExporting(true);window.requestAnimationFrame(()=>{try{createDailyReportPdf(eaten)}finally{setExporting(false)}})};
 
   return <main>
     <header className="topbar">
@@ -75,7 +134,7 @@ export default function Home() {
         <button className={tab==="foods"?"active":""} onClick={()=>setTab("foods")}><Icon>♧</Icon>健康食材库</button>
         <button className={tab==="recipes"?"active":""} onClick={()=>setTab("recipes")}><Icon>▦</Icon>菜谱数据库</button>
       </nav>
-      <div className="date">8月11日 · 星期二</div>
+      <button className="download-report" onClick={downloadReport} disabled={exporting} aria-label="下载今日饮食单页报告"><span aria-hidden="true">↓</span><b>{exporting?"生成中…":"下载今日报告"}</b></button>
     </header>
 
     {tab==="today" ? <div className="page">
