@@ -21,7 +21,11 @@ type Meal = {
 
 type AnalysisStatus = "done" | "ready" | "analyzing";
 type MealSlot = "菜谱" | "早餐" | "午餐" | "晚餐";
+type FoodMealSlot = Exclude<MealSlot,"菜谱">;
+type ReferenceMatch = { recipeId:string; distance:number };
+type ImageMatchOptions = Record<number,Partial<Record<FoodMealSlot,ReferenceMatch>>>;
 const MEAL_SLOTS: MealSlot[] = ["菜谱", "早餐", "午餐", "晚餐"];
+const FOOD_MEAL_SLOTS: FoodMealSlot[] = ["早餐","午餐","晚餐"];
 
 const meals: Meal[] = [
   { mealType:"早餐", name:"贝果配奶酪火腿黄桃", portion:"家庭份约 2 个贝果", kcal:820, carbs:108, protein:31, fiber:7, omega:0.2, score:61, tags:["主食", "乳制品"], image:"/current-meal/2026-08-11-breakfast.jpg", focus:"18% 20%", warning:"火腿与奶酪的钠和饱和脂肪偏高；建议火腿减半，部分换成鸡蛋或低盐鱼肉。" },
@@ -39,6 +43,95 @@ const defaultMealPhotoSources = (["早餐","午餐","晚餐"] as const).flatMap(
   const meal=meals.find(item=>item.mealType===slot);
   return meal?[{url:meal.image,index,slot}]:[];
 });
+
+const referenceFeatureCache=new Map<string,Promise<number[]>>();
+
+function imageFeature(url:string){
+  const cached=referenceFeatureCache.get(url);
+  if(cached)return cached;
+  const feature=new Promise<number[]>((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>{
+      const canvas=document.createElement("canvas");
+      canvas.width=16;canvas.height=16;
+      const context=canvas.getContext("2d",{willReadFrequently:true});
+      if(!context){reject(new Error("无法读取图片"));return;}
+      context.drawImage(image,0,0,16,16);
+      const pixels=context.getImageData(0,0,16,16).data;
+      const values:number[]=[];
+      for(let index=0;index<pixels.length;index+=4){
+        values.push(pixels[index]/255,pixels[index+1]/255,pixels[index+2]/255);
+      }
+      resolve(values);
+    };
+    image.onerror=()=>reject(new Error("图片加载失败"));
+    image.src=url;
+  });
+  if(!url.startsWith("blob:"))referenceFeatureCache.set(url,feature);
+  return feature;
+}
+
+function featureDistance(left:number[],right:number[]){
+  const length=Math.min(left.length,right.length);
+  if(!length)return 1;
+  let sum=0;
+  for(let index=0;index<length;index++){const delta=left[index]-right[index];sum+=delta*delta;}
+  return sum/length;
+}
+
+function referencesForSlot(slot:FoodMealSlot){
+  if(slot==="早餐")return recipeMeals.filter(meal=>meal.mealSlot==="早餐"||(!meal.mealSlot&&meal.kind==="早餐"));
+  return recipeMeals.filter(meal=>meal.mealSlot===slot);
+}
+
+async function matchMealPhotos(previews:string[],foodIndices:number[]){
+  const options:ImageMatchOptions={};
+  await Promise.all(foodIndices.map(async imageIndex=>{
+    const uploadedFeature=await imageFeature(previews[imageIndex]);
+    options[imageIndex]={};
+    await Promise.all(FOOD_MEAL_SLOTS.map(async slot=>{
+      const candidates=referencesForSlot(slot);
+      const scored=await Promise.all(candidates.map(async candidate=>({candidate,distance:featureDistance(uploadedFeature,await imageFeature(candidate.image))})));
+      scored.sort((left,right)=>left.distance-right.distance);
+      if(scored[0])options[imageIndex][slot]={recipeId:scored[0].candidate.id,distance:scored[0].distance};
+    }));
+  }));
+  let bestAssignment:Record<number,FoodMealSlot>={};
+  let bestScore=Number.POSITIVE_INFINITY;
+  const search=(position:number,available:FoodMealSlot[],assignment:Record<number,FoodMealSlot>,score:number)=>{
+    if(position===foodIndices.length){if(score<bestScore){bestScore=score;bestAssignment={...assignment};}return;}
+    const imageIndex=foodIndices[position];
+    available.forEach(slot=>{
+      assignment[imageIndex]=slot;
+      search(position+1,available.filter(item=>item!==slot),assignment,score+(options[imageIndex]?.[slot]?.distance??1));
+    });
+  };
+  search(0,FOOD_MEAL_SLOTS,{},0);
+  return {options,assignment:bestAssignment};
+}
+
+function estimateDish(name:string,mealType:FoodMealSlot,image:string):Meal{
+  const base={mealType,name,image,focus:"50% 50%",warning:undefined as string|undefined};
+  const result=(portion:string,kcal:number,carbs:number,protein:number,fiber:number,omega:number,score:number,tags:string[],warning?:string):Meal=>({...base,portion,kcal,carbs,protein,fiber,omega,score,tags,warning});
+  if(/杂粮饭|糙米|藜麦|米饭/.test(name))return result("家庭份熟重约 300g",390,82,8,5,.1,80,["全谷物","复合碳水"]);
+  if(/面|意粉|河粉|粉$/.test(name))return result("家庭份约 2 盘",560,86,22,7,.2,68,["主食","碳水"],"面食份量与酱汁用油需控制，搭配足量蔬菜。 ");
+  if(/贝果|面包|燕麦饼|鸡蛋饼/.test(name))return result("家庭份约 2 份",480,68,19,6,.2,76,["主食","早餐"]);
+  if(/果奶|燕麦牛奶|豆浆|牛奶|酸奶/.test(name))return result("约 2 碗 400ml",280,39,12,5,.5,84,["钙","植物奶"]);
+  if(/坚果.*水果|水果.*坚果|综合水果/.test(name))return result("坚果约 30g + 水果",310,34,7,7,.5,91,["不饱和脂肪","多酚"]);
+  if(/沙拉/.test(name))return result("家庭份约 350g",250,26,8,10,.4,92,["高纤维","多酚"]);
+  if(/鳗鱼|鲭鱼|青花鱼|带鱼|蒸鱼|煎鱼|黄花鱼|鲳鱼|鱼$/.test(name))return result("可食部约 320g",520,8,65,0,1.6,91,["优质蛋白","Omega-3"]);
+  if(/虾|蟹|生蚝|牡蛎|海参/.test(name))return result("可食部约 280g",360,12,48,1,.7,88,["海鲜蛋白","锌硒"]);
+  if(/鸡肉|鸡腿|鸡丁|鸡丝|手撕鸡|鸡胸|鸡翅/.test(name))return result("肉类约 260g",460,16,52,3,.2,82,["优质蛋白","少油"]);
+  if(/牛肉|牛腩/.test(name))return result("牛肉约 230g",560,18,49,3,.1,72,["高蛋白","红肉"],"红肉建议两人合计控制在约 200g，并少油少盐。 ");
+  if(/排骨|猪舌|腊肉|猪肉|肉片|肉末|肉沫|五指毛桃/.test(name))return result("肉类约 240g",590,20,42,3,.1,66,["动物蛋白","脂肪偏高"],"猪肉或排骨脂肪与钠偏高，女主人注意控制份量。 ");
+  if(/鸭/.test(name))return result("可食部约 240g",530,18,40,3,.2,70,["动物蛋白","脂肪偏高"]);
+  if(/鸡蛋|蒸蛋|蛋花|炒蛋/.test(name))return result("鸡蛋约 3 个",300,12,22,3,.4,86,["优质蛋白","胆碱"]);
+  if(/豆腐|腐竹|千张|豆干|豆角|芸豆|四季豆/.test(name))return result("家庭份约 320g",330,29,22,9,.5,89,["植物蛋白","高纤维"]);
+  if(/汤/.test(name))return result("家庭份约 600ml",180,18,14,4,.3,84,["汤羹","补水"]);
+  if(/青菜|菜花|西兰花|菠菜|秋葵|莴笋|芦笋|娃娃菜|生菜|白菜|紫甘蓝|青瓜|黄瓜|冬瓜|节瓜|丝瓜|茄子|彩椒|兰豆|荷兰豆|木耳|金针菇|蘑菇|西葫芦/.test(name))return result("家庭份约 300g",190,23,8,9,.3,92,["深色蔬菜","高纤维"]);
+  if(/水果|苹果|黄桃|橙|蓝莓|火龙果/.test(name))return result("家庭份约 300g",210,49,3,7,.2,90,["水果","多酚"]);
+  return result("家庭份约 280g",320,26,24,5,.2,78,["家常菜","待复核"]);
+}
 
 const foodData: Record<string, {name:string; note:string}[]> = {
   "肉类·蛋白": [
@@ -124,6 +217,7 @@ export default function Home() {
   const [uploadCount, setUploadCount] = useState(0);
   const [uploadPreviews, setUploadPreviews] = useState<string[]>([]);
   const [imageSlots, setImageSlots] = useState<MealSlot[]>([]);
+  const [imageMatchOptions, setImageMatchOptions] = useState<ImageMatchOptions>({});
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("done");
   const [exporting, setExporting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -133,20 +227,24 @@ export default function Home() {
   const mealPhotoSources=useMemo(
     ()=>{
       const usedSlots=new Set<Exclude<MealSlot,"菜谱">>();
-      return uploadPreviews
-        .map((url,index)=>({url,index,slot:imageSlots[index]}))
-        .filter((source): source is {url:string;index:number;slot:Exclude<MealSlot,"菜谱">}=>{
-          if(!source.slot||source.slot==="菜谱"||usedSlots.has(source.slot))return false;
-          usedSlots.add(source.slot);
-          return true;
-        });
+      const sources:{url:string;index:number;slot:FoodMealSlot;match?:ReferenceMatch}[]=[];
+      uploadPreviews.forEach((url,index)=>{
+        const slot=imageSlots[index];
+        if(!slot||slot==="菜谱"||usedSlots.has(slot))return;
+        usedSlots.add(slot);
+        sources.push({url,index,slot,match:imageMatchOptions[index]?.[slot]});
+      });
+      return sources;
     },
-    [uploadPreviews,imageSlots]
+    [uploadPreviews,imageSlots,imageMatchOptions]
   );
   const activeMeals=useMemo(()=>{
     if(!uploadCount)return meals;
-    const activeSlots=new Set(mealPhotoSources.map(source=>source.slot));
-    return meals.filter(meal=>activeSlots.has(meal.mealType));
+    return mealPhotoSources.flatMap(source=>{
+      const reference=source.match?recipeMeals.find(meal=>meal.id===source.match?.recipeId):undefined;
+      const names=reference?.dishes??meals.filter(meal=>meal.mealType===source.slot).map(meal=>meal.name);
+      return names.map(name=>estimateDish(name,source.slot,source.url));
+    });
   },[uploadCount,mealPhotoSources]);
   const totals = useMemo(()=>activeMeals.reduce((a,m)=>({kcal:a.kcal+m.kcal,carbs:a.carbs+m.carbs,protein:a.protein+m.protein,fiber:a.fiber+m.fiber,omega:a.omega+m.omega}),{kcal:0,carbs:0,protein:0,fiber:0,omega:0}),[activeMeals]);
   const eaten = Object.fromEntries(Object.entries(totals).map(([k,v])=>[k, +(v*0.8).toFixed(1)]));
@@ -168,19 +266,19 @@ export default function Home() {
     const namedRecipeIndex=selected.findIndex(file=>/菜谱|菜单|recipe|menu|截图|screenshot/.test(file.name.toLowerCase()));
     const pngRecipeIndex=selected.findIndex(file=>file.type==="image/png");
     const recipeIndex=namedRecipeIndex>=0?namedRecipeIndex:pngRecipeIndex>=0?pngRecipeIndex:selected.length===4?sizes.reduce((best,size,index)=>size.width*size.height<sizes[best].width*sizes[best].height?index:best,0):-1;
-    const usedSlots=new Set<Exclude<MealSlot,"菜谱">>();
-    const nextAvailableSlot=()=> (["早餐","午餐","晚餐"] as const).find(slot=>!usedSlots.has(slot));
-    const nextSlots=selected.map((file,index):MealSlot=>{
-      const name=file.name.toLowerCase();
-      if(index===recipeIndex||/菜谱|菜单|recipe|menu|截图|screenshot/.test(name))return "菜谱";
-      const namedSlot=/早餐|早饭|breakfast/.test(name)?"早餐":/午餐|午饭|lunch/.test(name)?"午餐":/晚餐|晚饭|dinner|supper/.test(name)?"晚餐":undefined;
-      const inferred=namedSlot&&!usedSlots.has(namedSlot)?namedSlot:nextAvailableSlot();
-      if(!inferred)return "菜谱";
-      usedSlots.add(inferred);
-      return inferred;
-    });
+    const foodIndices=selected.map((file,index)=>({file,index})).filter(({file,index})=>index!==recipeIndex&&!/菜谱|菜单|recipe|menu|截图|screenshot/.test(file.name.toLowerCase())).slice(0,3).map(item=>item.index);
+    let matchOptions:ImageMatchOptions={};
+    let assignment:Record<number,FoodMealSlot>={};
+    try{
+      const matched=await matchMealPhotos(nextPreviews,foodIndices);
+      matchOptions=matched.options;assignment=matched.assignment;
+    }catch{
+      foodIndices.forEach((imageIndex,position)=>{assignment[imageIndex]=FOOD_MEAL_SLOTS[position]});
+    }
+    const nextSlots=selected.map((_,index):MealSlot=>foodIndices.includes(index)?(assignment[index]??"早餐"):"菜谱");
     setUploadPreviews(nextPreviews);
     setImageSlots(nextSlots);
+    setImageMatchOptions(matchOptions);
     setUploadCount(selected.length);
     setAnalysisStatus(selected.length?"ready":"done");
   };
@@ -229,7 +327,7 @@ export default function Home() {
             <button className="analysis-trigger" onClick={analyzeMeal} disabled={!uploadCount||analysisStatus==="analyzing"}>{analysisStatus==="analyzing"?<><i/>分析中…</>:"开始营养分析"}</button>
             <span>{uploadCount?`已识别 ${imageSlots.filter(slot=>slot==="菜谱").length} 张菜谱（不展示）+ ${mealPhotoSources.length} 张餐食图`:`可一次多选菜谱和餐食照片`}</span>
           </div>
-          <span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>11 号菜谱已与早餐、午餐照片对应分析。</p>
+          <span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>按图片里的菜自动匹配菜谱与早、午、晚餐，不按上传顺序判断。</p>
         </div>
         <div className="goal-mini"><span>今日家庭目标</span><b>3,250 <small>kcal</small></b><em>女主人 1,450 · 男主人 1,800</em></div>
       </section>
@@ -251,7 +349,7 @@ export default function Home() {
       {uploadCount>0&&analysisStatus!=="done"&&<section className={`analysis-workbench ${analysisStatus}`} aria-live="polite" aria-busy={analysisStatus==="analyzing"}>
         <div className="analysis-preview-wrap"><div className="analysis-previews">{mealPhotoSources.map(source=><div key={source.url}><img src={source.url} alt={`${source.slot}待分析餐食图`}/><label><span>餐食图</span><select value={source.slot} onChange={event=>updateImageSlot(source.index,event.target.value as MealSlot)} aria-label={`调整餐食图 ${source.index+1} 餐次标签`}>{MEAL_SLOTS.filter(slot=>slot!=="菜谱").map(slot=><option key={slot}>{slot}</option>)}</select></label></div>)}</div>{imageSlots.some(slot=>slot==="菜谱")&&<p className="recipe-hidden-note">✓ 菜谱图已读取用于校准，不在页面显示</p>}</div>
         <div className="analysis-work-copy">
-          {analysisStatus==="ready"?<><span>{mealPhotoSources.length} 张餐食图已经准备好</span><h2>点击“开始营养分析”生成三餐结果</h2><p>菜谱图只作为文字校准依据；页面仅展示有菜的早餐、午餐、晚餐照片。</p><button onClick={analyzeMeal}>开始营养分析 <b>→</b></button></>:<><span>正在分析三餐</span><h2>菜谱与三张成品图交叉识别中</h2><p>菜谱截图不会出现在分析结果中，请不要关闭页面。</p><div className="analysis-progress"><i/><i/><i/></div><ol><li>读取菜谱文字</li><li>核对三餐菜品</li><li>计算营养和建议</li></ol></>}
+          {analysisStatus==="ready"?<><span>{mealPhotoSources.length} 张餐食图已经完成内容匹配</span><h2>点击“开始营养分析”生成三餐结果</h2><p>系统已将每张成品图与菜谱库实拍样本比对；菜谱截图不展示，餐次仍可手动调整。</p><button onClick={analyzeMeal}>开始营养分析 <b>→</b></button></>:<><span>正在分析三餐</span><h2>菜谱与三张成品图交叉识别中</h2><p>菜谱截图不会出现在分析结果中，请不要关闭页面。</p><div className="analysis-progress"><i/><i/><i/></div><ol><li>比对图中菜品</li><li>匹配菜谱餐次</li><li>计算营养和建议</li></ol></>}
         </div>
       </section>}
 
@@ -262,13 +360,16 @@ export default function Home() {
 
       <div className="photo-analysis-list">
         {(uploadCount>0?mealPhotoSources:defaultMealPhotoSources).map((source,photoIndex)=>{
-          const photoMeals=meals.filter(meal=>meal.mealType===source.slot);
+          const photoMeals=activeMeals.filter(meal=>meal.mealType===source.slot);
           const photoKcal=photoMeals.reduce((sum,meal)=>sum+meal.kcal,0);
           const photoProtein=photoMeals.reduce((sum,meal)=>sum+meal.protein,0);
+          const sourceMatch=uploadCount>0?(source as {match?:ReferenceMatch}).match:undefined;
+          const matchedReference=sourceMatch?recipeMeals.find(meal=>meal.id===sourceMatch.recipeId):undefined;
+          const matchLevel=sourceMatch?(sourceMatch.distance<.015?"高":sourceMatch.distance<.05?"中":"参考"):"";
           return <article className="photo-analysis-card" key={`${source.url}-${source.slot}`}>
             <div className="photo-analysis-image"><img src={source.url} alt={`${source.slot}餐食图 ${photoIndex+1}`}/><label>{uploadCount>0?<><span>图 {source.index+1}</span><select value={source.slot} onChange={event=>updateImageSlot(source.index,event.target.value as MealSlot)} aria-label={`调整餐食图 ${source.index+1} 标签`}>{MEAL_SLOTS.map(slot=><option key={slot}>{slot}</option>)}</select></>:<strong>{source.slot}</strong>}</label></div>
-            <div className="photo-analysis-body"><header><div><span>{source.slot} · 一餐一图</span><h3>本餐拆分 {photoMeals.length} 道菜</h3><p>原图只显示一次；各道菜的份量与营养在下方逐项分析</p></div><div className="photo-total"><b>{photoKcal}<small> kcal</small></b><span>本餐蛋白质 {photoProtein}g</span></div></header>
-              {photoMeals.length?<div className="photo-dishes">{photoMeals.map(meal=><div className="photo-dish-row" key={meal.name}><div><b>{meal.name}</b><small>{meal.portion}</small></div><strong>{meal.kcal}<small> kcal</small></strong><span>碳水 {meal.carbs}g</span><span>蛋白 {meal.protein}g</span><span>纤维 {meal.fiber}g</span><em className={meal.score>80?"good":"caution"}>{meal.score>80?"推荐":"需注意"}</em></div>)}</div>:<div className="photo-empty"><b>该餐次还没有已校准菜品</b><span>请调整图片标签，或保留为晚餐等待新增识别结果。</span></div>}
+            <div className="photo-analysis-body"><header><div><span>{source.slot} · 一餐一图</span><h3>本餐拆分 {photoMeals.length} 道菜</h3><p>{matchedReference?`图片内容匹配：${matchedReference.recipeNo?`${matchedReference.recipeNo}号菜谱 · ${matchedReference.mealSlot}`:"历史餐食样本"} · 相似度${matchLevel}`:"原图只显示一次；各道菜的份量与营养在下方逐项分析"}</p></div><div className="photo-total"><b>{photoKcal}<small> kcal</small></b><span>本餐蛋白质 {photoProtein}g</span></div></header>
+              {photoMeals.length?<div className="photo-dishes">{photoMeals.map(meal=><div className="photo-dish-row" key={`${source.index}-${meal.name}`}><div><b>{meal.name}</b><small>{meal.portion}</small></div><strong>{meal.kcal}<small> kcal</small></strong><span>碳水 {meal.carbs}g</span><span>蛋白 {meal.protein}g</span><span>纤维 {meal.fiber}g</span><em className={meal.score>80?"good":"caution"}>{meal.score>80?"推荐":"需注意"}</em></div>)}</div>:<div className="photo-empty"><b>该餐次暂未匹配成功</b><span>请调整图片餐次标签后重新分析。</span></div>}
             </div>
           </article>;
         })}
@@ -286,7 +387,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="advice"><div className="advice-icon">☀</div><div><span>基于菜谱、照片与两人体测的今日建议</span><h2>鱼、蔬菜和坚果表现很好，晚餐宜清淡收口</h2><ul><li>本次已匹配餐食合计实际摄入估算约 {eaten.kcal} 千卡；男主人分餐约 {Math.round(Number(eaten.kcal)*.6)} 千卡，已接近 1,800 千卡预算，晚餐如饿可选无油蔬菜汤或少量低脂蛋白。</li><li>女主人分餐约 {Math.round(Number(eaten.kcal)*.4)} 千卡，距离 1,450 千卡约余 {Math.max(0,1450-Math.round(Number(eaten.kcal)*.4))} 千卡；晚餐以蔬菜和少量豆腐、虾仁为主。</li><li>清蒸鱼、木耳荷兰豆、青菜和坚果提供较好的 Omega-3、纤维与多酚，是今天抗炎得分的主要来源。</li><li>贝果配火腿奶酪与虫草花牛肉的钠、红肉和饱和脂肪相对偏高；下次火腿减半、牛肉两人合计控制在约 200g。</li></ul></div></section>
+      <section className="advice"><div className="advice-icon">☀</div><div><span>基于菜谱、照片与两人体测的今日建议</span><h2>三餐已按图片内容汇总，下一餐按剩余预算安排</h2><ul><li>本次已匹配餐食合计实际摄入估算约 {eaten.kcal} 千卡；男主人分餐约 {Math.round(Number(eaten.kcal)*.6)} 千卡，对照 1,800 千卡每日预算调整下一餐。</li><li>女主人分餐约 {Math.round(Number(eaten.kcal)*.4)} 千卡，距离 1,450 千卡约余 {Math.max(0,1450-Math.round(Number(eaten.kcal)*.4))} 千卡；减脂期优先保证蛋白质与蔬菜。</li><li>当日鱼类、豆制品、深色蔬菜和坚果是 Omega-3、纤维与多酚的主要来源，建议继续保留。</li><li>标为“需注意”的菜品通常油、盐、红肉或精制碳水偏高；下次可减油并缩小约四分之一份量。</li></ul></div></section>
       <p className="disclaimer">营养结果基于图片与常见烹饪方式估算，仅用于日常饮食管理，不替代医生或营养师建议。</p>
       </section>}
     </div> : tab==="foods" ? <FoodLibrary foodTab={foodTab} setFoodTab={setFoodTab}/> : <RecipeLibrary/>} 
