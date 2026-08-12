@@ -35,6 +35,11 @@ const meals: Meal[] = [
   { mealType:"午餐", name:"杂粮饭（照片补充）", portion:"熟重约 320g", kcal:390, carbs:82, protein:8, fiber:5, omega:0.1, score:80, tags:["全谷物", "复合碳水"], image:"/current-meal/2026-08-11-lunch.jpg", focus:"88% 75%" },
 ];
 
+const defaultMealPhotoSources = (["早餐","午餐","晚餐"] as const).flatMap((slot,index)=>{
+  const meal=meals.find(item=>item.mealType===slot);
+  return meal?[{url:meal.image,index,slot}]:[];
+});
+
 const foodData: Record<string, {name:string; note:string}[]> = {
   "肉类·蛋白": [
     ["深海三文鱼", "Omega-3 丰富"], ["沙丁鱼", "低汞高钙"], ["鲭鱼", "EPA/DHA 丰富"], ["鳟鱼", "优质蛋白"], ["虾", "低脂高蛋白"],
@@ -126,9 +131,16 @@ export default function Home() {
   const analysisTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const results = useRef<HTMLElement>(null);
   const mealPhotoSources=useMemo(
-    ()=>uploadPreviews
-      .map((url,index)=>({url,index,slot:imageSlots[index]}))
-      .filter((source): source is {url:string;index:number;slot:Exclude<MealSlot,"菜谱">}=>Boolean(source.slot&&source.slot!=="菜谱")),
+    ()=>{
+      const usedSlots=new Set<Exclude<MealSlot,"菜谱">>();
+      return uploadPreviews
+        .map((url,index)=>({url,index,slot:imageSlots[index]}))
+        .filter((source): source is {url:string;index:number;slot:Exclude<MealSlot,"菜谱">}=>{
+          if(!source.slot||source.slot==="菜谱"||usedSlots.has(source.slot))return false;
+          usedSlots.add(source.slot);
+          return true;
+        });
+    },
     [uploadPreviews,imageSlots]
   );
   const activeMeals=useMemo(()=>{
@@ -148,21 +160,29 @@ export default function Home() {
     const nextPreviews=selected.map(file=>URL.createObjectURL(file));
     previewUrls.current=nextPreviews;
     setUploadPreviews(nextPreviews);
-    let mealPhotoIndex=0;
+    const usedSlots=new Set<Exclude<MealSlot,"菜谱">>();
+    const nextAvailableSlot=()=> (["早餐","午餐","晚餐"] as const).find(slot=>!usedSlots.has(slot));
     setImageSlots(selected.map((file,index)=>{
       const name=file.name.toLowerCase();
       if(/菜谱|菜单|recipe|menu/.test(name)||(index===0&&file.type==="image/png"))return "菜谱";
-      if(/早餐|早饭|breakfast/.test(name))return "早餐";
-      if(/午餐|午饭|lunch/.test(name))return "午餐";
-      if(/晚餐|晚饭|dinner|supper/.test(name))return "晚餐";
-      const inferred=(['早餐','午餐','晚餐'] as const)[Math.min(mealPhotoIndex,2)];
-      mealPhotoIndex+=1;
+      const namedSlot=/早餐|早饭|breakfast/.test(name)?"早餐":/午餐|午饭|lunch/.test(name)?"午餐":/晚餐|晚饭|dinner|supper/.test(name)?"晚餐":undefined;
+      const inferred=namedSlot&&!usedSlots.has(namedSlot)?namedSlot:nextAvailableSlot();
+      if(!inferred)return "菜谱";
+      usedSlots.add(inferred);
       return inferred;
     }));
     setUploadCount(selected.length);
     setAnalysisStatus(selected.length?"ready":"done");
   };
-  const updateImageSlot=(index:number,slot:MealSlot)=>setImageSlots(current=>current.map((value,itemIndex)=>itemIndex===index?slot:value));
+  const updateImageSlot=(index:number,slot:MealSlot)=>setImageSlots(current=>{
+    const previous=current[index]||"菜谱";
+    if(previous===slot)return current;
+    const next=[...current];
+    const conflict=slot==="菜谱"?-1:current.findIndex((value,itemIndex)=>itemIndex!==index&&value===slot);
+    next[index]=slot;
+    if(conflict>=0)next[conflict]=previous;
+    return next;
+  });
   const analyzeMeal=()=>{
     if(!uploadCount||analysisStatus==="analyzing")return;
     setAnalysisStatus("analyzing");
@@ -226,31 +246,24 @@ export default function Home() {
       </section>}
 
       {showResults&&<section ref={results} className="analysis-results">
-      {uploadCount>0&&<div className="analysis-complete" role="status"><span>✓</span><div><b>营养分析完成 · 按图片分组</b><small>已匹配 {imageSlots.filter(slot=>slot==="菜谱").length} 张菜谱和 {mealPhotoSources.length} 张餐食图，每张图可单独调整餐次标签</small></div><button onClick={openMealPicker}>重新上传</button></div>}
+      {uploadCount>0&&<div className="analysis-complete" role="status"><span>✓</span><div><b>营养分析完成 · 一餐一张图</b><small>已匹配 {imageSlots.filter(slot=>slot==="菜谱").length} 张菜谱和 {mealPhotoSources.length} 餐；每餐只显示一张原图，菜品与营养在图内拆分</small></div><button onClick={openMealPicker}>重新上传</button></div>}
 
       <section className="analysis-head"><div><span className="step">1</span><div><h2>{uploadCount?"逐张餐食图片分析":"11 号菜谱营养分析"}</h2><p>{uploadCount?`自动匹配 ${mealPhotoSources.map(source=>source.slot).join("、")||"餐食"} · 每张图汇总全部菜品与热量`:"菜谱文字与成品照交叉核对 · 共识别早餐 4 项、午餐 5 项"}</p></div></div><span className="score">抗炎评分 <b>84</b><small>/100</small></span></section>
 
-      {uploadCount>0?<div className="photo-analysis-list">
-        {mealPhotoSources.map((source,photoIndex)=>{
+      <div className="photo-analysis-list">
+        {(uploadCount>0?mealPhotoSources:defaultMealPhotoSources).map((source,photoIndex)=>{
           const photoMeals=meals.filter(meal=>meal.mealType===source.slot);
           const photoKcal=photoMeals.reduce((sum,meal)=>sum+meal.kcal,0);
           const photoProtein=photoMeals.reduce((sum,meal)=>sum+meal.protein,0);
           return <article className="photo-analysis-card" key={`${source.url}-${source.slot}`}>
-            <div className="photo-analysis-image"><img src={source.url} alt={`${source.slot}餐食图 ${photoIndex+1}`}/><label><span>图 {source.index+1}</span><select value={source.slot} onChange={event=>updateImageSlot(source.index,event.target.value as MealSlot)} aria-label={`调整餐食图 ${source.index+1} 标签`}>{MEAL_SLOTS.map(slot=><option key={slot}>{slot}</option>)}</select></label></div>
-            <div className="photo-analysis-body"><header><div><span>{source.slot} · 图片 {source.index+1}</span><h3>本图识别 {photoMeals.length} 道菜</h3><p>每道菜的份量与营养独立估算，右侧为整张图合计</p></div><div className="photo-total"><b>{photoKcal}<small> kcal</small></b><span>蛋白质 {photoProtein}g</span></div></header>
+            <div className="photo-analysis-image"><img src={source.url} alt={`${source.slot}餐食图 ${photoIndex+1}`}/><label>{uploadCount>0?<><span>图 {source.index+1}</span><select value={source.slot} onChange={event=>updateImageSlot(source.index,event.target.value as MealSlot)} aria-label={`调整餐食图 ${source.index+1} 标签`}>{MEAL_SLOTS.map(slot=><option key={slot}>{slot}</option>)}</select></>:<strong>{source.slot}</strong>}</label></div>
+            <div className="photo-analysis-body"><header><div><span>{source.slot} · 一餐一图</span><h3>本餐拆分 {photoMeals.length} 道菜</h3><p>原图只显示一次；各道菜的份量与营养在下方逐项分析</p></div><div className="photo-total"><b>{photoKcal}<small> kcal</small></b><span>本餐蛋白质 {photoProtein}g</span></div></header>
               {photoMeals.length?<div className="photo-dishes">{photoMeals.map(meal=><div className="photo-dish-row" key={meal.name}><div><b>{meal.name}</b><small>{meal.portion}</small></div><strong>{meal.kcal}<small> kcal</small></strong><span>碳水 {meal.carbs}g</span><span>蛋白 {meal.protein}g</span><span>纤维 {meal.fiber}g</span><em className={meal.score>80?"good":"caution"}>{meal.score>80?"推荐":"需注意"}</em></div>)}</div>:<div className="photo-empty"><b>该餐次还没有已校准菜品</b><span>请调整图片标签，或保留为晚餐等待新增识别结果。</span></div>}
             </div>
           </article>;
         })}
-        {!mealPhotoSources.length&&<div className="photo-empty standalone"><b>还没有餐食成品图</b><span>请把至少一张图片标签从“菜谱”改为早餐、午餐或晚餐。</span></div>}
-      </div>:<div className="meal-grid">
-        {meals.map(m=><article className="meal" key={m.name}>
-          <div className="dish dish-photo"><img src={m.image} alt={`${m.mealType}餐食照片` } style={{objectPosition:m.focus}}/><em>{m.mealType}</em><b className={m.score>80?"good":"caution"}>{m.score>80?"推荐":"需注意"}</b></div>
-          <div className="meal-body"><div className="meal-title"><div><h3>{m.name}</h3><span>{m.portion}</span></div><button aria-label={`编辑${m.name}`}>✎</button></div>
-          <div className="macros"><b>{m.kcal}<small>千卡</small></b><span>碳水 <strong>{m.carbs}g</strong></span><span>蛋白 <strong>{m.protein}g</strong></span><span>纤维 <strong>{m.fiber}g</strong></span></div>
-          <div className="tags">{m.tags.map(t=><span key={t}>✦ {t}</span>)}</div>{m.warning&&<p className="warning">! {m.warning}</p>}</div>
-        </article>)}
-      </div>}
+        {uploadCount>0&&!mealPhotoSources.length&&<div className="photo-empty standalone"><b>还没有餐食成品图</b><span>请把至少一张图片标签从“菜谱”改为早餐、午餐或晚餐。</span></div>}
+      </div>
 
       <section className="summary-card">
         <div className="summary-top"><div><span className="step">2</span><div><h2>{uploadCount?`${Array.from(new Set(mealPhotoSources.map(source=>source.slot))).join(" + ")||"本次餐食"}家庭实际摄入`:"早餐 + 午餐家庭实际摄入"}</h2><p>按做菜总量的 80% 计入 · 剩余约 20%</p></div></div><b>{eaten.kcal}<small> kcal</small></b></div>
