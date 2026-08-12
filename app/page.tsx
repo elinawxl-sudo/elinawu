@@ -154,23 +154,33 @@ export default function Home() {
     previewUrls.current.forEach(url=>URL.revokeObjectURL(url));
     if(analysisTimer.current)clearTimeout(analysisTimer.current);
   },[]);
-  const selectMealFiles = (files?:FileList|null) => {
+  const selectMealFiles = async (files?:FileList|null) => {
     const selected=Array.from(files||[]);
     previewUrls.current.forEach(url=>URL.revokeObjectURL(url));
     const nextPreviews=selected.map(file=>URL.createObjectURL(file));
     previewUrls.current=nextPreviews;
-    setUploadPreviews(nextPreviews);
+    const sizes=await Promise.all(nextPreviews.map(url=>new Promise<{width:number;height:number}>(resolve=>{
+      const image=new Image();
+      image.onload=()=>resolve({width:image.naturalWidth,height:image.naturalHeight});
+      image.onerror=()=>resolve({width:1,height:1});
+      image.src=url;
+    })));
+    const namedRecipeIndex=selected.findIndex(file=>/菜谱|菜单|recipe|menu|截图|screenshot/.test(file.name.toLowerCase()));
+    const pngRecipeIndex=selected.findIndex(file=>file.type==="image/png");
+    const recipeIndex=namedRecipeIndex>=0?namedRecipeIndex:pngRecipeIndex>=0?pngRecipeIndex:selected.length===4?sizes.reduce((best,size,index)=>size.width*size.height<sizes[best].width*sizes[best].height?index:best,0):-1;
     const usedSlots=new Set<Exclude<MealSlot,"菜谱">>();
     const nextAvailableSlot=()=> (["早餐","午餐","晚餐"] as const).find(slot=>!usedSlots.has(slot));
-    setImageSlots(selected.map((file,index)=>{
+    const nextSlots=selected.map((file,index):MealSlot=>{
       const name=file.name.toLowerCase();
-      if(/菜谱|菜单|recipe|menu/.test(name)||(index===0&&file.type==="image/png"))return "菜谱";
+      if(index===recipeIndex||/菜谱|菜单|recipe|menu|截图|screenshot/.test(name))return "菜谱";
       const namedSlot=/早餐|早饭|breakfast/.test(name)?"早餐":/午餐|午饭|lunch/.test(name)?"午餐":/晚餐|晚饭|dinner|supper/.test(name)?"晚餐":undefined;
       const inferred=namedSlot&&!usedSlots.has(namedSlot)?namedSlot:nextAvailableSlot();
       if(!inferred)return "菜谱";
       usedSlots.add(inferred);
       return inferred;
-    }));
+    });
+    setUploadPreviews(nextPreviews);
+    setImageSlots(nextSlots);
     setUploadCount(selected.length);
     setAnalysisStatus(selected.length?"ready":"done");
   };
@@ -217,7 +227,7 @@ export default function Home() {
             <input ref={input} type="file" accept="image/*" multiple hidden onChange={e=>selectMealFiles(e.target.files)}/>
             <button className="upload-trigger" onClick={openMealPicker}>＋ 上传菜谱与成品图</button>
             <button className="analysis-trigger" onClick={analyzeMeal} disabled={!uploadCount||analysisStatus==="analyzing"}>{analysisStatus==="analyzing"?<><i/>分析中…</>:"开始营养分析"}</button>
-            <span>{uploadCount?`已选择 ${uploadCount} 张图片，点击分析`:`可一次多选菜谱和餐食照片`}</span>
+            <span>{uploadCount?`已识别 ${imageSlots.filter(slot=>slot==="菜谱").length} 张菜谱（不展示）+ ${mealPhotoSources.length} 张餐食图`:`可一次多选菜谱和餐食照片`}</span>
           </div>
           <span className="eyebrow">TODAY'S TABLE</span><h1>今天吃得怎么样？</h1><p>11 号菜谱已与早餐、午餐照片对应分析。</p>
         </div>
@@ -239,9 +249,9 @@ export default function Home() {
       </section>
 
       {uploadCount>0&&analysisStatus!=="done"&&<section className={`analysis-workbench ${analysisStatus}`} aria-live="polite" aria-busy={analysisStatus==="analyzing"}>
-        <div className="analysis-previews">{uploadPreviews.slice(0,4).map((url,index)=><div key={url}><img src={url} alt={`待分析图片 ${index+1}`}/><label><span>图片 {index+1}</span><select value={imageSlots[index]} onChange={event=>updateImageSlot(index,event.target.value as MealSlot)} aria-label={`调整图片 ${index+1} 餐次标签`}>{MEAL_SLOTS.map(slot=><option key={slot}>{slot}</option>)}</select></label></div>)}{uploadCount>4&&<b>+{uploadCount-4}</b>}</div>
+        <div className="analysis-preview-wrap"><div className="analysis-previews">{mealPhotoSources.map(source=><div key={source.url}><img src={source.url} alt={`${source.slot}待分析餐食图`}/><label><span>餐食图</span><select value={source.slot} onChange={event=>updateImageSlot(source.index,event.target.value as MealSlot)} aria-label={`调整餐食图 ${source.index+1} 餐次标签`}>{MEAL_SLOTS.filter(slot=>slot!=="菜谱").map(slot=><option key={slot}>{slot}</option>)}</select></label></div>)}</div>{imageSlots.some(slot=>slot==="菜谱")&&<p className="recipe-hidden-note">✓ 菜谱图已读取用于校准，不在页面显示</p>}</div>
         <div className="analysis-work-copy">
-          {analysisStatus==="ready"?<><span>图片已经准备好</span><h2>点击“开始营养分析”生成本餐结果</h2><p>系统将合并菜谱文字与成品照片，估算菜名、份量、热量和抗炎营养成分。</p><button onClick={analyzeMeal}>开始营养分析 <b>→</b></button></>:<><span>正在分析本餐</span><h2>菜谱与成品图交叉识别中</h2><p>通常几秒即可完成，请不要关闭页面。</p><div className="analysis-progress"><i/><i/><i/></div><ol><li>读取菜谱文字</li><li>核对菜品与份量</li><li>计算营养和建议</li></ol></>}
+          {analysisStatus==="ready"?<><span>{mealPhotoSources.length} 张餐食图已经准备好</span><h2>点击“开始营养分析”生成三餐结果</h2><p>菜谱图只作为文字校准依据；页面仅展示有菜的早餐、午餐、晚餐照片。</p><button onClick={analyzeMeal}>开始营养分析 <b>→</b></button></>:<><span>正在分析三餐</span><h2>菜谱与三张成品图交叉识别中</h2><p>菜谱截图不会出现在分析结果中，请不要关闭页面。</p><div className="analysis-progress"><i/><i/><i/></div><ol><li>读取菜谱文字</li><li>核对三餐菜品</li><li>计算营养和建议</li></ol></>}
         </div>
       </section>}
 
